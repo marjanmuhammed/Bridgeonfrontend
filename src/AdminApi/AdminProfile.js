@@ -12,6 +12,11 @@ export const getUserProfile = async (userId) => {
   const response = await axiosInstance.get(`/Profiles/user/${userId}`);
   return response.data;
 };
+export const getProfileDetails = async (userId) => {
+  const response = await axiosInstance.get(`/Profiles/user/${userId}`);
+  return response.data;
+};
+
 
 export const createProfile = async (profileData) => {
   const response = await axiosInstance.post("/Profiles", profileData);

@@ -24,3 +24,7 @@ export const unassignMenteesFromMentor = async (data) => {
   // data = { mentorId, userIds: [] }
   return await axiosInstance.post("/Mentor/unassign", data);
 };
+
+
+
+
