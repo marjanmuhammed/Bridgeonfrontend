@@ -154,9 +154,14 @@ const ProfileManagement = () => {
     setIsProfileModalOpen(true);
   };
 
-  const handleEditProfile = async (user) => {
-    try {
-      const { data: profileData } = await getUserProfile(user.id);
+
+// In ProfileManagement.jsx - FIXED VERSION
+const handleEditProfile = async (user) => {
+  try {
+    const profileData = await getUserProfile(user.id);
+    
+    if (profileData) {
+      // PROPERLY MAP ALL FIELDS FROM profileData
       setFormData({
         userId: user.id,
         email: profileData.email || user.email,
@@ -175,53 +180,66 @@ const ProfileManagement = () => {
         guardianPhone: profileData.guardianPhone || ""
       });
       setEditingProfile(profileData);
-      setIsProfileModalOpen(true);
-    } catch (error) {
-      console.error("Error loading profile:", error);
-      showToast("Failed to load profile data", "error");
+    } else {
+      // No profile exists - set up for creation
+      setFormData({
+        ...getInitialFormData(),
+        userId: user.id,
+        email: user.email
+      });
+      setEditingProfile(null);
     }
-  };
+    setIsProfileModalOpen(true);
+  } catch (error) {
+    console.error("Error loading profile:", error);
+    showToast("Failed to load profile data", "error");
+  }
+};
 
-  const handleViewProfile = async (user) => {
-    try {
-      setLoading(true);
-      setCurrentUser(user);
-      
-      // Try to fetch profile details
-      try {
-        const { data: profileData } = await getProfileDetails(user.id);
-        setViewingProfile(profileData);
-        setIsViewModalOpen(true);
-      } catch (profileError) {
-        // If profile doesn't exist, show basic user info
-        setViewingProfile({
-          email: user.email,
-          phone: "Not provided",
-          address: "Not provided",
-          branch: "Not provided",
-          space: "Not provided",
-          week: 0,
-          advisor: "Not provided",
-          mentor: "Not provided",
-          qualification: "Not provided",
-          institution: "Not provided",
-          passOutYear: new Date().getFullYear(),
-          guardianName: "Not provided",
-          guardianRelationship: "Not provided",
-          guardianPhone: "Not provided"
-        });
-        setIsViewModalOpen(true);
-        showToast("No detailed profile found. Showing basic information.", "info");
-      }
-      
-    } catch (error) {
-      console.error("Error loading profile:", error);
-      showToast("Failed to load profile data", "error");
-    } finally {
-      setLoading(false);
+
+// In ProfileManagement.jsx - FIXED VERSION
+const handleViewProfile = async (user) => {
+  try {
+    setLoading(true);
+    setCurrentUser(user);
+    
+    const profileData = await getProfileDetails(user.id);
+    
+    if (profileData) {
+      // Profile exists - use the actual data
+      setViewingProfile(profileData);
+    } else {
+      // Profile doesn't exist - show basic info
+      setViewingProfile({
+        email: user.email,
+        phone: "Not provided",
+        address: "Not provided",
+        branch: "Not provided",
+        space: "Not provided",
+        week: 0,
+        advisor: "Not provided",
+        mentor: "Not provided",
+        qualification: "Not provided",
+        institution: "Not provided",
+        passOutYear: new Date().getFullYear(),
+        guardianName: "Not provided",
+        guardianRelationship: "Not provided",
+        guardianPhone: "Not provided"
+      });
+      showToast("No detailed profile found. Showing basic information.", "info");
     }
-  };
+    setIsViewModalOpen(true);
+      
+  } catch (error) {
+    console.error("Error loading profile:", error);
+    showToast("Failed to load profile data", "error");
+  } finally {
+    setLoading(false);
+  }
+};
 
+
+ 
   const handleEditFromView = async () => {
     if (currentUser) {
       setIsViewModalOpen(false);
@@ -251,70 +269,75 @@ const ProfileManagement = () => {
     }));
   };
 
-  const handleSaveProfile = async () => {
-    setSaving(true);
-    try {
-      const profileData = {
-        userId: parseInt(formData.userId),
-        email: formData.email,
-        phone: formData.phone?.trim() || null,
-        address: formData.address?.trim() || null,
-        branch: formData.branch?.trim() || null,
-        space: formData.space?.trim() || null,
-        week: formData.week || 0,
-        advisor: formData.advisor?.trim() || null,
-        mentor: formData.mentor?.trim() || null,
-        qualification: formData.qualification?.trim() || null,
-        institution: formData.institution?.trim() || null,
-        passOutYear: formData.passOutYear || new Date().getFullYear(),
-        guardianName: formData.guardianName?.trim() || null,
-        guardianRelationship: formData.guardianRelationship?.trim() || null,
-        guardianPhone: formData.guardianPhone?.trim() || null
-      };
+  // In ProfileManagement.jsx - FIXED VERSION
+const handleSaveProfile = async () => {
+  setSaving(true);
+  try {
+    const profileData = {
+      userId: parseInt(formData.userId),
+      email: formData.email,
+      phone: formData.phone?.trim() || null,
+      address: formData.address?.trim() || null,
+      branch: formData.branch?.trim() || null,
+      space: formData.space?.trim() || null,
+      week: formData.week || 0,
+      advisor: formData.advisor?.trim() || null,
+      mentor: formData.mentor?.trim() || null,
+      qualification: formData.qualification?.trim() || null,
+      institution: formData.institution?.trim() || null,
+      passOutYear: formData.passOutYear || new Date().getFullYear(),
+      guardianName: formData.guardianName?.trim() || null,
+      guardianRelationship: formData.guardianRelationship?.trim() || null,
+      guardianPhone: formData.guardianPhone?.trim() || null
+    };
 
-      if (editingProfile) {
-        await updateProfile(formData.userId, profileData);
-        showToast("Profile updated successfully", "success");
-      } else {
-        await createProfile(profileData);
-        showToast("Profile created successfully", "success");
-      }
+    if (editingProfile) {
+      // Use userId for update, not profile ID
+      await updateProfile(formData.userId, profileData);
+      showToast("Profile updated successfully", "success");
+    } else {
+      await createProfile(profileData);
+      showToast("Profile created successfully", "success");
+    }
 
-      setIsProfileModalOpen(false);
-      setFormData(getInitialFormData());
+    setIsProfileModalOpen(false);
+    setFormData(getInitialFormData());
+    fetchUsersWithProfiles();
+    
+  } catch (error) {
+    console.error("Error saving profile:", error);
+    // Log the actual error response for debugging
+    console.log("Error response:", error.response?.data);
+    const errorMessage = error.response?.data?.message || 
+                        "Failed to save profile. Please check the data and try again.";
+    showToast(errorMessage, "error");
+  } finally {
+    setSaving(false);
+  }
+};
+
+const handleDeleteProfile = async (user) => {
+  try {
+    // First check if profile exists
+    const profile = await getUserProfile(user.id);
+    
+    if (!profile) {
+      showToast("No profile found to delete", "warning");
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to delete the profile for ${user.fullName}?`)) {
+      // Use profile.id instead of user.id for deletion
+      await deleteProfile(profile.id);
+      showToast("Profile deleted successfully", "success");
       fetchUsersWithProfiles();
-      
-    } catch (error) {
-      console.error("Error saving profile:", error);
-      const errorMessage = error.response?.data?.message || 
-                          "Failed to save profile. Please check the data and try again.";
-      showToast(errorMessage, "error");
-    } finally {
-      setSaving(false);
     }
-  };
-
-  const handleDeleteProfile = async (user) => {
-    try {
-      // Check if profile exists first
-      await getUserProfile(user.id);
-      
-      if (window.confirm(`Are you sure you want to delete the profile for ${user.fullName}?`)) {
-        try {
-          await deleteProfile(user.id);
-          showToast("Profile deleted successfully", "success");
-          fetchUsersWithProfiles();
-        } catch (error) {
-          console.error("Error deleting profile:", error);
-          const errorMessage = error.response?.data?.message || "Failed to delete profile";
-          showToast(errorMessage, "error");
-        }
-      }
-    } catch (error) {
-      showToast("No profile found to delete", "error");
-    }
-  };
-
+  } catch (error) {
+    console.error("Error deleting profile:", error);
+    const errorMessage = error.response?.data?.message || "Failed to delete profile";
+    showToast(errorMessage, "error");
+  }
+};
   const clearFilters = () => {
     setSearchTerm("");
     setRoleFilter("All");
@@ -368,15 +391,14 @@ const ProfileManagement = () => {
       return { text: "Basic Profile", color: "bg-blue-100 text-blue-800 border-blue-200" };
     }
   };
-
-  const hasProfile = async (userId) => {
-    try {
-      await getUserProfile(userId);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  };
+const hasProfile = async (userId) => {
+  try {
+    const profile = await getUserProfile(userId);
+    return profile !== null && profile !== undefined;
+  } catch (error) {
+    return false;
+  }
+};
 
   const formatFieldValue = (value) => {
     if (!value || value === "" || value === 0) return "Not provided";
