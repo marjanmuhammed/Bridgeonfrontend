@@ -26,8 +26,19 @@ const updateProfileImage = async (imageUrl) => {
 };
 
 
+const getProfile = async () => {
+  try {
+    const response = await axiosInstance.get(`${BASE_URL}/profile`);
+    return response.data;
+  } catch (error) {
+    console.error('Get Profile Error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// ✅ Export all functions
 export default {
   uploadProfileImage,
   updateProfileImage,
-  getProfile: () => axiosInstance.get(`${BASE_URL}/profile`)
+  getProfile,
 };

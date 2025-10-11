@@ -48,3 +48,21 @@ export const updateProfile = async (userId, profileData) => {
 export const deleteProfile = async (profileId) => {
   await axiosInstance.delete(`/Profiles/${profileId}`);
 };
+
+
+///////////////////////////////////
+
+
+// Add this function to get current user's profile
+export const getMyProfile = async () => {
+  try {
+    const response = await axiosInstance.get("/Profiles/my-profile");
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      console.warn("Profile not found for current user");
+      return null;
+    }
+    throw error;
+  }
+};

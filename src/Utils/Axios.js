@@ -3,7 +3,7 @@ import axios from "axios";
 
 const axiosInstance = axios.create({
   baseURL: "https://localhost:7029/api",
-  timeout: 10000,
+  timeout: 60000,
   withCredentials: true, // ✅ cookies attach automatically
 });
 
