@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -63,6 +63,7 @@ const DashboardManagement = () => {
   const [tabValue, setTabValue] = useState(0);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [selectedUser, setSelectedUser] = useState(null);
+  const [deletingUserId, setDeletingUserId] = useState(null);
 
   const [reviewDialog, setReviewDialog] = useState({ open: false, mode: 'create' });
   const [reviewData, setReviewData] = useState({
@@ -171,13 +172,18 @@ const DashboardManagement = () => {
 
   const handleDeleteReview = async (user) => {
     if (window.confirm(`Delete review for ${user.fullName}?`)) {
-      try {
-        await adminReviewApi.deleteReview(user.id);
-        showSnackbar('Review deleted');
-        loadUserProfiles();
-      } catch {
-        showSnackbar('Error deleting review', 'error');
-      }
+      setDeletingUserId(user.id);
+      setTimeout(async () => {
+        try {
+          await adminReviewApi.deleteReview(user.id);
+          showSnackbar('Review deleted');
+          loadUserProfiles();
+        } catch {
+          showSnackbar('Error deleting review', 'error');
+        } finally {
+          setDeletingUserId(null);
+        }
+      }, 400);
     }
   };
 
@@ -189,7 +195,7 @@ const DashboardManagement = () => {
     setSelectedUser(user);
     if (user.review && user.review.feeCategory) {
       setFeeData({
-        feeCategory: user.review.feeCategory,
+        feeCategory: user.review.feeCategory || 'Weekback',
         pendingAmount: user.review.pendingAmount || 0,
         dueDate: user.review.dueDate ? new Date(user.review.dueDate) : new Date(),
         feeStatus: user.review.feeStatus || 'Pending'
@@ -205,35 +211,45 @@ const DashboardManagement = () => {
     setFeeDialog({ open: true });
   };
 
+  // FIXED: Properly handle fee saving with correct API calls
   const handleSaveFees = async () => {
-    try {
+  try {
+    console.log('Saving fees for user:', selectedUser.id, 'with data:', feeData);
+
+    // If only feeStatus is being updated (similar to dropdown behavior)
+    if (Object.keys(feeData).length === 1 || 
+        (feeData.feeCategory === selectedUser.review?.feeCategory &&
+         feeData.pendingAmount === selectedUser.review?.pendingAmount &&
+         new Date(feeData.dueDate).toDateString() === new Date(selectedUser.review?.dueDate).toDateString() &&
+         feeData.feeStatus !== selectedUser.review?.feeStatus)) {
+      
+      await adminReviewApi.updateFeeStatus(selectedUser.id, feeData.feeStatus);
+      showSnackbar('Fee status updated successfully');
+    } 
+    else {
+      // otherwise perform full update
       await adminReviewApi.addOrUpdateFees(selectedUser.id, feeData);
       showSnackbar('Fees updated successfully');
-      setFeeDialog({ open: false });
-      loadUserProfiles();
-    } catch {
-      showSnackbar('Error updating fees', 'error');
     }
-  };
 
-  const handleDeleteFees = async (user) => {
-    if (window.confirm(`Delete fees for ${user.fullName}?`)) {
-      try {
-        await adminReviewApi.deleteFees(user.id);
-        showSnackbar('Fees deleted');
-        loadUserProfiles();
-      } catch {
-        showSnackbar('Error deleting fees', 'error');
-      }
-    }
-  };
+    setFeeDialog({ open: false });
+    loadUserProfiles();
+
+  } catch (error) {
+    console.error('Error in handleSaveFees:', error);
+    showSnackbar('Error updating fees', 'error');
+  }
+};
+
 
   const handleUpdateFeeStatus = async (user, newStatus) => {
     try {
+      console.log('Updating fee status for user:', user.id, 'to:', newStatus);
       await adminReviewApi.updateFeeStatus(user.id, newStatus);
-      showSnackbar('Fee status updated');
+      showSnackbar(`Fee status updated to ${newStatus}`);
       loadUserProfiles();
-    } catch {
+    } catch (error) {
+      console.error('Error updating fee status:', error);
       showSnackbar('Error updating fee status', 'error');
     }
   };
@@ -244,6 +260,8 @@ const DashboardManagement = () => {
       case 'Completed': return 'success';
       case 'Pending': return 'warning';
       case 'Not Assigned': return 'error';
+      case 'Overdued': return 'error';
+      case 'Overdue': return 'error';
       default: return 'default';
     }
   };
@@ -317,7 +335,6 @@ const DashboardManagement = () => {
               <Tab label="Fee Management" />
             </Tabs>
 
-            {/* --- 🔍 Search --- */}
             <Box sx={{ mt: 3, mb: 2 }}>
               <TextField
                 label="Search by name or email"
@@ -328,7 +345,6 @@ const DashboardManagement = () => {
               />
             </Box>
 
-            {/* --- User Reviews --- */}
             <TabPanel value={tabValue} index={0}>
               <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: "0 6px 20px rgba(0,0,0,0.08)" }}>
                 <Table>
@@ -344,7 +360,19 @@ const DashboardManagement = () => {
                   </TableHead>
                   <TableBody>
                     {filteredUsers.map((user) => (
-                      <TableRow key={user.id} hover>
+                      <TableRow
+                        key={user.id}
+                        hover
+                        sx={{
+                          transition: 'all 0.4s ease',
+                          opacity: deletingUserId === user.id ? 0 : 1,
+                          transform: deletingUserId === user.id ? 'scale(0.95)' : 'scale(1)',
+                          backgroundColor:
+                            user.review?.feeStatus === 'Pending'
+                              ? '#ffebee'
+                              : 'inherit',
+                        }}
+                      >
                         <TableCell>
                           <Box display="flex" alignItems="center">
                             <Avatar src={user.profileImageUrl} sx={{ width: 40, height: 40, mr: 2 }}>
@@ -391,16 +419,45 @@ const DashboardManagement = () => {
                                 <IconButton color="error" onClick={() => handleDeleteReview(user)}>
                                   <Delete />
                                 </IconButton>
-                              <Button
-  variant="contained"
-  startIcon={<Payment />}
-  onClick={() => openFeeDialog(user)}
-  size="small"
-  sx={{ ml: 1, bgcolor: 'red', '&:hover': { bgcolor: '#c62828' } }}
->
-  Add Fees
-</Button>
-
+                                <Button
+                                  variant="contained"
+                                  startIcon={<Payment />}
+                                  onClick={() => openFeeDialog(user)}
+                                  size="small"
+                                  sx={{
+                                    fontSize: '0.65rem',
+                                    textTransform: 'none',
+                                    fontWeight: 600,
+                                    borderRadius: '6px',
+                                    background: 'linear-gradient(90deg, #1976d2 0%, #42a5f5 100%)',
+                                    color: '#fff',
+                                    px: 1,
+                                    py: 0.35,
+                                    minWidth: '78px',
+                                    maxWidth: '80px',
+                                    boxShadow: '0 2px 4px rgba(25,118,210,0.25)',
+                                    transition: 'all 0.25s ease-in-out',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    '&:hover': {
+                                      background: 'linear-gradient(90deg, #1565c0 0%, #1e88e5 100%)',
+                                      boxShadow: '0 4px 8px rgba(25,118,210,0.3)',
+                                      transform: 'translateY(-1px)',
+                                    },
+                                    '& .MuiButton-startIcon': {
+                                      marginRight: '3px',
+                                      '& svg': {
+                                        fontSize: '0.9rem',
+                                      },
+                                    },
+                                  }}
+                                >
+                                  {user.review?.feeCategory ? 'Edit Fees' : 'Add Fees'}
+                                </Button>
                               </>
                             )}
                           </Box>
@@ -412,7 +469,6 @@ const DashboardManagement = () => {
               </TableContainer>
             </TabPanel>
 
-            {/* --- Fee Management --- */}
             <TabPanel value={tabValue} index={1}>
               <TableContainer
                 component={Paper}
@@ -439,7 +495,17 @@ const DashboardManagement = () => {
                         key={user.id}
                         hover
                         sx={{
-                          backgroundColor: user.review.feeStatus === 'Pending' ? '#ffebee' : 'inherit'
+                          transition: 'all 0.4s ease',
+                          opacity: deletingUserId === user.id ? 0 : 1,
+                          transform: deletingUserId === user.id ? 'scale(0.95)' : 'scale(1)',
+                          backgroundColor:
+                            user.review?.feeStatus === 'Pending'
+                              ? '#ffebee'
+                              : user.review?.feeStatus === 'Overdued'
+                              ? '#fff3e0'
+                              : user.review?.feeStatus === 'Completed'
+                              ? '#e8f5e8'
+                              : 'inherit',
                         }}
                       >
                         <TableCell>
@@ -460,13 +526,21 @@ const DashboardManagement = () => {
                         </TableCell>
                         <TableCell>{user.review.feeCategory}</TableCell>
                         <TableCell>₹{user.review.pendingAmount}</TableCell>
-                        <TableCell>{user.review.dueDate ? new Date(user.review.dueDate).toLocaleDateString() : 'N/A'}</TableCell>
                         <TableCell>
-                          <Chip
-                            label={user.review.feeStatus}
-                            size="small"
-                            color={getStatusColor(user.review.feeStatus)}
-                          />
+                          {user.review.dueDate ? new Date(user.review.dueDate).toLocaleDateString() : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <Select
+                              value={user.review.feeStatus || 'Pending'}
+                              onChange={(e) => handleUpdateFeeStatus(user, e.target.value)}
+                              size="small"
+                            >
+                              <MenuItem value="Pending">Pending</MenuItem>
+                              <MenuItem value="Completed">Paid</MenuItem>
+                              <MenuItem value="Overdued">Overdue</MenuItem>
+                            </Select>
+                          </FormControl>
                         </TableCell>
                         <TableCell>
                           <Box display="flex" gap={1}>
@@ -482,6 +556,7 @@ const DashboardManagement = () => {
                                 variant="outlined"
                                 color="success"
                                 onClick={() => handleUpdateFeeStatus(user, 'Completed')}
+                                sx={{ fontSize: '0.7rem' }}
                               >
                                 Mark Paid
                               </Button>
@@ -497,7 +572,6 @@ const DashboardManagement = () => {
           </CardContent>
         </Card>
 
-        {/* --- View Review Dialog --- */}
         <Dialog
           open={viewDialog.open}
           onClose={() => setViewDialog({ open: false, data: null })}
@@ -534,7 +608,6 @@ const DashboardManagement = () => {
           </DialogActions>
         </Dialog>
 
-        {/* --- Review Dialog --- */}
         <Dialog
           open={reviewDialog.open}
           onClose={() => setReviewDialog({ open: false, mode: 'create' })}
@@ -582,7 +655,6 @@ const DashboardManagement = () => {
           </DialogActions>
         </Dialog>
 
-        {/* --- Fee Dialog --- */}
         <Dialog open={feeDialog.open} onClose={() => setFeeDialog({ open: false })} maxWidth="sm" fullWidth>
           <DialogTitle sx={{ background: 'linear-gradient(90deg, #1976d2, #64b5f6)', color: 'white' }}>
             Manage Fees - {selectedUser?.fullName}
@@ -609,7 +681,7 @@ const DashboardManagement = () => {
                 fullWidth
                 sx={{ mb: 2 }}
                 value={feeData.pendingAmount}
-                onChange={(e) => setFeeData({ ...feeData, pendingAmount: parseFloat(e.target.value) })}
+                onChange={(e) => setFeeData({ ...feeData, pendingAmount: parseFloat(e.target.value) || 0 })}
                 InputProps={{
                   startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
                 }}
@@ -628,8 +700,8 @@ const DashboardManagement = () => {
                   onChange={(e) => setFeeData({ ...feeData, feeStatus: e.target.value })}
                 >
                   <MenuItem value="Pending">Pending</MenuItem>
-                  <MenuItem value="Completed">Completed</MenuItem>
-                  <MenuItem value="Overdue">Overdue</MenuItem>
+                  <MenuItem value="Completed">Paid</MenuItem>
+                  <MenuItem value="Overdued">Overdue</MenuItem>
                 </Select>
               </FormControl>
             </Box>

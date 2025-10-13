@@ -12,21 +12,19 @@ const adminReviewApi = {
     const response = await axiosInstance.post('/UserReview/add-review', {
       userId,
       reviewStatus: reviewData.reviewStatus,
-     reviewDate: reviewData.reviewDate ? reviewData.reviewDate.toISOString() : null
-
+      reviewDate: reviewData.reviewDate ? reviewData.reviewDate.toISOString() : null
     });
     return response.data;
   },
 
   // Update review status
-updateReviewStatus: async (userId, reviewStatus, reviewDate) => {
-  const response = await axiosInstance.put(`/UserReview/update-review-status/${userId}`, {
-    reviewStatus,
-    reviewDate: reviewDate ? reviewDate.toISOString() : null
-  });
-  return response.data;
-},
-
+  updateReviewStatus: async (userId, reviewStatus, reviewDate) => {
+    const response = await axiosInstance.put(`/UserReview/update-review-status/${userId}`, {
+      reviewStatus,
+      reviewDate: reviewDate ? reviewDate.toISOString() : null
+    });
+    return response.data;
+  },
 
   // Delete review
   deleteReview: async (userId) => {
@@ -41,15 +39,20 @@ updateReviewStatus: async (userId, reviewStatus, reviewDate) => {
   },
 
   // Add or update fees
-  addOrUpdateFees: async (userId, feeData) => {
-    const response = await axiosInstance.post(`/UserReview/${userId}/fees`, feeData);
-    return response.data;
-  },
-
-  // Update fee status
+  // Add or update fees - FIXED version
+addOrUpdateFees: async (userId, feeData) => {
+  const response = await axiosInstance.post(`/UserReview/${userId}/fees`, {
+    feeCategory: feeData.feeCategory,
+    pendingAmount: feeData.pendingAmount,
+    dueDate: feeData.dueDate,
+    feeStatus: feeData.feeStatus  // Ensure this is sent
+  });
+  return response.data;
+},
+  // Update fee status - FIXED: Send correct data structure
   updateFeeStatus: async (userId, feeStatus) => {
     const response = await axiosInstance.put(`/UserReview/${userId}/fee-status`, {
-      feeStatus
+      feeStatus: feeStatus
     });
     return response.data;
   },
@@ -67,4 +70,8 @@ updateReviewStatus: async (userId, reviewStatus, reviewDate) => {
   }
 };
 
+
 export default adminReviewApi;
+
+
+//////////////////////////
