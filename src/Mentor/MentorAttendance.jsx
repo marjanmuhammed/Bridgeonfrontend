@@ -1,12 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, Filter, X, Plus, Edit2, Trash2, Search, Users, Download, User, Mail, Briefcase, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import { attendanceApi } from '../../Api/AttendenceApi';
-import adminReviewApi from '../../AdminApi/adminReviewApi';
+import { mentorAttendanceApi } from '../MentorApi/MentorAttendance';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import HomePage from '../Auth/Home';
 
-
-const AttendanceManagement = () => {
+const MentorAttendanceDashboard = () => {
   // State management
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -15,7 +14,7 @@ const AttendanceManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState('all');
   const [editingRecord, setEditingRecord] = useState(null);
-  const [users, setUsers] = useState([]);
+  const [mentees, setMentees] = useState([]);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -59,7 +58,7 @@ const AttendanceManagement = () => {
     { value: 'last-month', label: 'Last Month' },
   ];
 
-  // Fetch users and attendance data
+  // FIXED: Fetch mentees and attendance data
   useEffect(() => {
     fetchData();
   }, []);
@@ -69,49 +68,50 @@ const AttendanceManagement = () => {
       setLoading(true);
       setError(null);
       
-      // Fetch users
-      const usersResponse = await adminReviewApi.getAllUserProfiles();
-      console.log('Users API Response:', usersResponse);
+      console.log('🟡 Starting data fetch...');
       
-      if (usersResponse.status === 200) {
-        setUsers(usersResponse.data || []);
+      // Fetch mentor's mentees FIRST
+      const menteesResponse = await mentorAttendanceApi.getMyMentees();
+      console.log('🟢 Mentees API Response:', menteesResponse);
+      
+      let menteesData = [];
+      if (menteesResponse.status === 200) {
+        menteesData = Array.isArray(menteesResponse.data) ? menteesResponse.data : [];
+        setMentees(menteesData);
+        console.log(`🟢 Set ${menteesData.length} mentees`);
       } else {
-        throw new Error(usersResponse.message || 'Failed to fetch users');
+        throw new Error(menteesResponse.message || 'Failed to fetch mentees');
       }
 
-      // Fetch attendance records
-      const attendanceResponse = await attendanceApi.getAllAttendances();
-      console.log('Attendance API Response:', attendanceResponse);
+      // Then fetch attendance records
+      const attendanceResponse = await mentorAttendanceApi.getAllAttendances();
+      console.log('🟢 Attendance API Response:', attendanceResponse);
       
       if (attendanceResponse.status === 200) {
-        const records = Array.isArray(attendanceResponse.data) ? attendanceResponse.data : [];
-        setAttendanceRecords(records);
+        const allRecords = Array.isArray(attendanceResponse.data) ? attendanceResponse.data : [];
+        
+        // Filter records to only show mentor's mentees
+        const menteeIds = menteesData.map(mentee => mentee.id);
+        console.log('🟡 Mentee IDs for filtering:', menteeIds);
+        
+        const filteredRecords = allRecords.filter(record => 
+          menteeIds.includes(record.userId)
+        );
+        
+        console.log(`🟢 Filtered ${filteredRecords.length} attendance records out of ${allRecords.length} total`);
+        setAttendanceRecords(filteredRecords);
       } else {
         throw new Error(attendanceResponse.message || 'Failed to fetch attendance records');
       }
+      
     } catch (err) {
-      setError(err.message);
-      console.error('Error fetching data:', err);
+      console.error('🔴 Error fetching data:', err);
+      setError(err.message || 'An unexpected error occurred');
+      toast.error(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
   };
-  // Helper to ensure time is in correct format for backend
-const ensureTimeFormat = (time) => {
-  if (!time) return "00:00:00";
-  
-  // If already in HH:mm:ss format
-  if (time.includes(':') && time.split(':').length === 3) {
-    return time;
-  }
-  
-  // If in HH:mm format, add seconds
-  if (time.includes(':') && time.split(':').length === 2) {
-    return `${time}:00`;
-  }
-  
-  return "00:00:00";
-};
 
   // Helper functions
   const stringToColor = (str) => {
@@ -175,7 +175,7 @@ const ensureTimeFormat = (time) => {
   };
 
   const getUserInfo = (userId) => {
-    return users.find(u => u.id === userId);
+    return mentees.find(u => u.id === userId);
   };
 
   const formatTimeForDisplay = (timeString) => {
@@ -217,50 +217,50 @@ const ensureTimeFormat = (time) => {
     }
   };
 
-  // Filter employees based on search and department
-  const filteredEmployees = useMemo(() => {
-    return users.filter(emp => {
+  // Filter mentees based on search and department
+  const filteredMentees = useMemo(() => {
+    return mentees.filter(mentee => {
       const matchesSearch = 
-        emp.fullName?.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
-        emp.email?.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
-        emp.role?.toLowerCase().includes(employeeSearchTerm.toLowerCase());
+        mentee.fullName?.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
+        mentee.email?.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
+        mentee.role?.toLowerCase().includes(employeeSearchTerm.toLowerCase());
       
-      const matchesDept = selectedDepartment === 'all' || emp.department === selectedDepartment;
+      const matchesDept = selectedDepartment === 'all' || mentee.department === selectedDepartment;
       
       return matchesSearch && matchesDept;
     });
-  }, [users, employeeSearchTerm, selectedDepartment]);
+  }, [mentees, employeeSearchTerm, selectedDepartment]);
 
   // Get unique departments for filter
   const departments = useMemo(() => {
-    const depts = [...new Set(users.map(emp => emp.department).filter(Boolean))];
+    const depts = [...new Set(mentees.map(mentee => mentee.department).filter(Boolean))];
     return depts;
-  }, [users]);
+  }, [mentees]);
 
-  // Employee Details Section Component
-  const EmployeeDetailsSection = () => (
+  // Mentee Details Section Component
+  const MenteeDetailsSection = () => (
     <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border border-gray-100">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-            Employee Directory
+            My Mentees Directory
           </h2>
-          <p className="text-gray-600 mt-1">Manage and view all employee details</p>
+          <p className="text-gray-600 mt-1">Manage and view all your mentee details</p>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Users size={18} />
-          <span>{filteredEmployees.length} of {users.length} Employees</span>
+          <span>{filteredMentees.length} of {mentees.length} Mentees</span>
         </div>
       </div>
 
-      {/* Employee Search and Filters */}
+      {/* Mentee Search and Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="flex-1">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Search employees by name, email, or role..."
+              placeholder="Search mentees by name, email, or role..."
               value={employeeSearchTerm}
               onChange={(e) => setEmployeeSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
@@ -284,47 +284,47 @@ const ensureTimeFormat = (time) => {
         )}
       </div>
 
-      {/* Employee Grid */}
-      {filteredEmployees.length === 0 ? (
+      {/* Mentee Grid */}
+      {filteredMentees.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <Users size={48} className="mx-auto mb-4 text-gray-300" />
-          <p className="text-lg">No employees found</p>
+          <p className="text-lg">No mentees found</p>
           <p className="text-sm">Try adjusting your search criteria</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredEmployees.map((emp) => (
+          {filteredMentees.map((mentee) => (
             <div
-              key={emp.id}
+              key={mentee.id}
               className="group bg-gradient-to-br from-gray-50 to-white hover:from-white hover:to-purple-50 transition-all duration-300 shadow-sm hover:shadow-lg p-4 rounded-xl border border-gray-200 hover:border-purple-300 hover:transform hover:-translate-y-1"
             >
               <div className="flex items-center gap-3 mb-3">
-                {getUserAvatar(emp)}
+                {getUserAvatar(mentee)}
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-gray-900 truncate group-hover:text-purple-700 transition-colors">
-                    {emp.fullName}
+                    {mentee.fullName}
                   </p>
-                  <p className="text-xs text-gray-500 font-medium">{emp.role}</p>
+                  <p className="text-xs text-gray-500 font-medium">{mentee.role}</p>
                 </div>
               </div>
               
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Mail size={14} className="text-gray-400" />
-                  <span className="truncate">{emp.email}</span>
+                  <span className="truncate">{mentee.email}</span>
                 </div>
                 
-                {emp.department && (
+                {mentee.department && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Briefcase size={14} className="text-gray-400" />
-                    <span>{emp.department}</span>
+                    <span>{mentee.department}</span>
                   </div>
                 )}
                 
-                {emp.phone && (
+                {mentee.phone && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <User size={14} className="text-gray-400" />
-                    <span>{emp.phone}</span>
+                    <span>{mentee.phone}</span>
                   </div>
                 )}
               </div>
@@ -334,11 +334,11 @@ const ensureTimeFormat = (time) => {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-500">Status:</span>
                   <span className={`px-2 py-1 rounded-full ${
-                    emp.status === 'Active' 
+                    mentee.status === 'Active' 
                       ? 'bg-green-100 text-green-800' 
                       : 'bg-gray-100 text-gray-800'
                   }`}>
-                    {emp.status || 'Active'}
+                    {mentee.status || 'Active'}
                   </span>
                 </div>
               </div>
@@ -444,299 +444,325 @@ const ensureTimeFormat = (time) => {
   }, [allAttendanceRecords, selectedFilter, selectedUser, searchTerm]);
 
   // Statistics calculation
- // Statistics calculation - remove absent count
-const stats = useMemo(() => {
-  const today = new Date().toISOString().split('T')[0];
-  const todayRecords = attendanceRecords.filter(r => {
-    try {
-      const recordDate = new Date(r.date).toISOString().split('T')[0];
-      return recordDate === today;
-    } catch (error) {
-      return false;
-    }
-  });
-  
-  return {
-    totalEmployees: users.length,
-    present: todayRecords.filter(r => attendanceApi.mapStatusToFrontend(r.status) === 'Present').length,
-    late: todayRecords.filter(r => attendanceApi.mapStatusToFrontend(r.status) === 'Late').length,
-    // REMOVE absent count
-    unexcused: todayRecords.filter(r => attendanceApi.mapStatusToFrontend(r.status) === 'Unexcused').length,
-  };
-}, [attendanceRecords, users]);
-  // Attendance handlers
-const handleAddAttendance = async () => {
-  if (!formData.userId || !formData.date) {
-    toast.error('Please select an employee and date');
-    return;
-  }
-
-  try {
-    const attendanceData = {
-      userId: formData.userId,
-      date: formData.date,
-      checkIn: formData.checkIn,
-      checkOut: formData.checkOut,
-      status: formData.status
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayRecords = attendanceRecords.filter(r => {
+      try {
+        const recordDate = new Date(r.date).toISOString().split('T')[0];
+        return recordDate === today;
+      } catch (error) {
+        return false;
+      }
+    });
+    
+    return {
+      totalMentees: mentees.length,
+      present: todayRecords.filter(r => mentorAttendanceApi.mapStatusToFrontend(r.status) === 'Present').length,
+      late: todayRecords.filter(r => mentorAttendanceApi.mapStatusToFrontend(r.status) === 'Late').length,
+      unexcused: todayRecords.filter(r => mentorAttendanceApi.mapStatusToFrontend(r.status) === 'Unexcused').length,
     };
+  }, [attendanceRecords, mentees]);
 
-    console.log('🟡 Creating attendance with data:', attendanceData);
-    
-    const response = await attendanceApi.createAttendance(attendanceData);
-    
-    if (response.status === 201) {
+  // FIXED: Attendance handlers with better error handling
+  const handleAddAttendance = async () => {
+    if (!formData.userId || !formData.date) {
+      toast.error('Please select a mentee and date');
+      return;
+    }
+
+    try {
+      const attendanceData = {
+        userId: formData.userId,
+        date: formData.date,
+        checkIn: formData.checkIn,
+        checkOut: formData.checkOut,
+        status: formData.status
+      };
+
+      console.log('🟡 Creating attendance for mentee:', attendanceData);
+      
+      await mentorAttendanceApi.createAttendance(attendanceData);
       await fetchData();
       setShowAddModal(false);
       resetForm();
       setError(null);
+      toast.success('Attendance record added successfully!');
+      
+    } catch (err) {
+      console.error('🔴 Error adding attendance:', err);
+      const errorMessage = err.message || 'Failed to add attendance record';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
-  } catch (err) {
-    console.error('🔴 Error adding attendance:', err);
-    // Error is already handled in the API with toast
-  }
-};
-const handleEditAttendance = async () => {
-  if (!editingRecord) {
-    toast.error("No attendance record selected for editing");
-    return;
-  }
+  };
 
-  try {
-    console.log("🟡 Starting attendance update...");
-    
-    // FIXED: Use the correct data structure
-    const updateData = {
-      userId: parseInt(formData.userId),
-      date: editingRecord.date, // Use the original record date
-      checkInTime: formData.checkIn || "00:00:00",
-      checkOutTime: formData.checkOut || "00:00:00",
-      status: formData.status
-    };
+  const handleEditAttendance = async () => {
+    if (!editingRecord) {
+      toast.error("No attendance record selected for editing");
+      return;
+    }
 
-    console.log("🟡 Update data:", updateData);
+    try {
+      console.log("🟡 Starting attendance update...");
+      
+      const updateData = {
+        userId: parseInt(formData.userId),
+        date: editingRecord.date,
+        checkInTime: formData.checkIn || "00:00:00",
+        checkOutTime: formData.checkOut || "00:00:00",
+        status: formData.status
+      };
 
-    await attendanceApi.updateAttendance(updateData);
-    
-    // Refresh data and close modal
-    await fetchData();
-    setShowEditModal(false);
-    setEditingRecord(null);
-    resetForm();
-    
-    console.log("🟢 Attendance update completed successfully");
-    
-  } catch (error) {
-    console.error("🔴 Error in handleEditAttendance:", error);
-    // Error is already handled in the API with toast
-  }
-};
-const handleDeleteAttendance = async (attendance) => {
-  if (!window.confirm('Are you sure you want to delete this attendance record?')) {
-    return;
-  }
+      console.log("🟡 Update data:", updateData);
 
-  try {
-    console.log('🟡 Deleting attendance:', attendance);
-    await attendanceApi.deleteAttendance(attendance.userId, attendance.date);
-    await fetchData(); // Refresh the data
-  } catch (error) {
-    console.error('🔴 Error deleting attendance:', error);
-    // Error is already handled in the API with toast
-  }
-};
+      await mentorAttendanceApi.updateAttendance(updateData);
+      await fetchData();
+      setShowEditModal(false);
+      setEditingRecord(null);
+      resetForm();
+      
+      console.log("🟢 Attendance update completed successfully");
+      toast.success('Attendance record updated successfully!');
+      
+    } catch (error) {
+      console.error("🔴 Error in handleEditAttendance:", error);
+      const errorMessage = error.message || 'Failed to update attendance record';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
+  };
 
-// FIXED: Open edit modal with correct date handling
-const openEditModal = async (record) => {
-  try {
-    setEditingRecord(record);
+  const handleDeleteAttendance = async (attendance) => {
+    if (!window.confirm('Are you sure you want to delete this attendance record?')) {
+      return;
+    }
+
+    try {
+      console.log('🟡 Deleting attendance:', attendance);
+      await mentorAttendanceApi.deleteAttendance(attendance.userId, attendance.date);
+      await fetchData();
+      toast.success('Attendance record deleted successfully!');
+    } catch (error) {
+      console.error('🔴 Error deleting attendance:', error);
+      toast.error(error.message || 'Failed to delete attendance record');
+    }
+  };
+
+  const openEditModal = async (record) => {
+    try {
+      setEditingRecord(record);
+      
+      const recordDate = new Date(record.date);
+      const formattedDate = recordDate.toISOString().split('T')[0];
+      
+      console.log('Editing record date:', {
+        original: record.date,
+        parsed: recordDate,
+        formatted: formattedDate
+      });
+      
+      setFormData({
+        userId: record.userId.toString(),
+        date: formattedDate,
+        checkIn: formatTimeForInput(record.checkInTime),
+        checkOut: record.checkOutTime ? formatTimeForInput(record.checkOutTime) : '',
+        status: mentorAttendanceApi.mapStatusToFrontend(record.status)
+      });
+      
+      setShowEditModal(true);
+    } catch (error) {
+      setError('Error loading attendance record for editing');
+      console.error('Error opening edit modal:', error);
+    }
+  };
+
+  const formatTimeForInput = (timeString) => {
+    if (!timeString) return '';
     
-    // FIXED: Use the record's actual date, ensure it's formatted correctly
-    const recordDate = new Date(record.date);
-    const formattedDate = recordDate.toISOString().split('T')[0];
-    
-    console.log('Editing record date:', {
-      original: record.date,
-      parsed: recordDate,
-      formatted: formattedDate
-    });
-    
-    // Pre-populate form with existing record data
-    setFormData({
-      userId: record.userId.toString(),
-      date: formattedDate, // Use the properly formatted date
-      checkIn: formatTimeForInput(record.checkInTime),
-      checkOut: record.checkOutTime ? formatTimeForInput(record.checkOutTime) : '',
-      status: attendanceApi.mapStatusToFrontend(record.status)
-    });
-    
-    setShowEditModal(true);
-  } catch (error) {
-    setError('Error loading attendance record for editing');
-    console.error('Error opening edit modal:', error);
-  }
-};
-// Helper function to format time for input fields
-const formatTimeForInput = (timeString) => {
-  if (!timeString) return '';
-  
-  try {
-    let time;
-    if (typeof timeString === 'string') {
-      if (timeString.includes('T')) {
-        time = new Date(timeString);
+    try {
+      let time;
+      if (typeof timeString === 'string') {
+        if (timeString.includes('T')) {
+          time = new Date(timeString);
+        } else {
+          const [hours, minutes] = timeString.split(':');
+          time = new Date();
+          time.setHours(parseInt(hours), parseInt(minutes || 0), 0, 0);
+        }
       } else {
-        const [hours, minutes] = timeString.split(':');
-        time = new Date();
-        time.setHours(parseInt(hours), parseInt(minutes || 0), 0, 0);
+        return '';
       }
-    } else {
+      
+      return time.toTimeString().slice(0, 5);
+    } catch (error) {
+      console.error('Error formatting time for input:', error, timeString);
       return '';
     }
-    
-    return time.toTimeString().slice(0, 5);
-  } catch (error) {
-    console.error('Error formatting time for input:', error, timeString);
-    return '';
-  }
-};
-const resetForm = () => {
-  setFormData({
-    userId: '',
-    date: new Date().toISOString().split('T')[0],
-    checkIn: '',
-    checkOut: '',
-    status: 'Unexcused'
-  });
-};
+  };
+
+  const resetForm = () => {
+    setFormData({
+      userId: '',
+      date: new Date().toISOString().split('T')[0],
+      checkIn: '',
+      checkOut: '',
+      status: 'Unexcused'
+    });
+  };
+
+  // FIXED: Add retry mechanism for failed fetches
+  const retryFetch = () => {
+    setError(null);
+    fetchData();
+  };
 
   // Render table row for attendance records
-// Render table row for attendance records
-const renderEmployeeTableRow = (record, idx) => {
-  const user = getUserInfo(record.userId);
-  
-  // FIXED: Add debug logging for status mapping
-  const displayStatus = attendanceApi.mapStatusToFrontend(record.status);
-  console.log(`Record ${record.id}: backend status ${record.status} -> frontend: ${displayStatus}`);
-  
-  const StatusIcon = statusIcons[displayStatus] || User;
-  
-  return (
-    <tr key={record.id} className={idx % 2 === 0 ? 'bg-gray-50 hover:bg-gray-100' : 'bg-white hover:bg-gray-100 transition-colors duration-200'}>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <img 
-              src={user?.profileImageUrl} 
-              alt={user?.fullName}
-              className="w-10 h-10 rounded-full object-cover border-2 border-gray-200 shadow-sm"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                const fallback = e.target.nextSibling;
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            <div 
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md border-2 border-white absolute top-0 left-0"
-              style={{ 
-                display: 'none',
-                backgroundColor: stringToColor(user?.fullName)
-              }}
+  const renderMenteeTableRow = (record, idx) => {
+    const user = getUserInfo(record.userId);
+    
+    const displayStatus = mentorAttendanceApi.mapStatusToFrontend(record.status);
+    console.log(`Record ${record.id}: backend status ${record.status} -> frontend: ${displayStatus}`);
+    
+    const StatusIcon = statusIcons[displayStatus] || User;
+    
+    return (
+      <tr key={record.id} className={idx % 2 === 0 ? 'bg-gray-50 hover:bg-gray-100' : 'bg-white hover:bg-gray-100 transition-colors duration-200'}>
+        <td className="px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <img 
+                src={user?.profileImageUrl} 
+                alt={user?.fullName}
+                className="w-10 h-10 rounded-full object-cover border-2 border-gray-200 shadow-sm"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  const fallback = e.target.nextSibling;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+              />
+              <div 
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md border-2 border-white absolute top-0 left-0"
+                style={{ 
+                  display: 'none',
+                  backgroundColor: stringToColor(user?.fullName)
+                }}
+              >
+                {getUserInitials(user?.fullName)}
+              </div>
+            </div>
+            
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-gray-900 truncate">
+                {user?.fullName || 'Unknown Mentee'}
+              </div>
+              <div className="text-sm text-gray-600 truncate flex items-center gap-1">
+                <Mail size={12} />
+                {user?.email || 'No email'}
+              </div>
+              <div className="text-xs text-gray-500 font-medium mt-1 flex items-center gap-1">
+                <Briefcase size={12} />
+                {user?.role || 'No role'}
+                {user?.department && ` • ${user.department}`}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td className="px-6 py-4 text-gray-800 font-medium whitespace-nowrap">
+          {record.date ? formatDisplayDate(record.date) : 'No date'}
+        </td>
+        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+          {record.checkInTime ? formatTimeForDisplay(record.checkInTime) : 
+            <span className="text-gray-400 italic">Not checked in</span>}
+        </td>
+        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+          {record.checkOutTime ? formatTimeForDisplay(record.checkOutTime) : 
+            <span className="text-gray-400 italic">Not checked out</span>}
+        </td>
+        <td className="px-6 py-4">
+          <span className={`px-3 py-2 rounded-full text-white text-sm font-semibold inline-block min-w-[100px] text-center shadow-sm flex items-center justify-center gap-1 ${
+            statusColors[displayStatus] || 'bg-gray-500'
+          }`}>
+            <StatusIcon size={14} />
+            {displayStatus}
+          </span>
+        </td>
+        <td className="px-6 py-4">
+          <div className="flex gap-2">
+            <button
+              onClick={() => openEditModal(record)}
+              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300 border border-blue-200 hover:border-blue-300"
+              title="Edit"
             >
-              {getUserInitials(user?.fullName)}
-            </div>
+              <Edit2 size={18} />
+            </button>
+            <button
+              onClick={() => handleDeleteAttendance(record)}
+              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-300 border border-red-200 hover:border-red-300"
+              title="Delete"
+            >
+              <Trash2 size={18} />
+            </button>
           </div>
-          
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold text-gray-900 truncate">
-              {user?.fullName || 'Unknown User'}
-            </div>
-            <div className="text-sm text-gray-600 truncate flex items-center gap-1">
-              <Mail size={12} />
-              {user?.email || 'No email'}
-            </div>
-            <div className="text-xs text-gray-500 font-medium mt-1 flex items-center gap-1">
-              <Briefcase size={12} />
-              {user?.role || 'No role'}
-              {user?.department && ` • ${user.department}`}
-            </div>
-          </div>
-        </div>
-      </td>
-      <td className="px-6 py-4 text-gray-800 font-medium whitespace-nowrap">
-        {record.date ? formatDisplayDate(record.date) : 'No date'}
-      </td>
-      <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-        {record.checkInTime ? formatTimeForDisplay(record.checkInTime) : 
-          <span className="text-gray-400 italic">Not checked in</span>}
-      </td>
-      <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-        {record.checkOutTime ? formatTimeForDisplay(record.checkOutTime) : 
-          <span className="text-gray-400 italic">Not checked out</span>}
-      </td>
-      <td className="px-6 py-4">
-        <span className={`px-3 py-2 rounded-full text-white text-sm font-semibold inline-block min-w-[100px] text-center shadow-sm flex items-center justify-center gap-1 ${
-          statusColors[displayStatus] || 'bg-gray-500'
-        }`}>
-          <StatusIcon size={14} />
-          {displayStatus}
-        </span>
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => openEditModal(record)}
-            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300 border border-blue-200 hover:border-blue-300"
-            title="Edit"
-          >
-            <Edit2 size={18} />
-          </button>
-          <button
-            onClick={() => handleDeleteAttendance(record)}
-            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-300 border border-red-200 hover:border-red-300"
-            title="Delete"
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-};
+        </td>
+      </tr>
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-6 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading attendance data...</p>
+          <p className="mt-4 text-gray-600">Loading mentee attendance data...</p>
         </div>
       </div>
     );
   }
 
   return (
+
+    
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-6">
-      <div className="max-w-7xl mx-auto">
         
-        {/* Error Message */}
+      <div className="max-w-7xl mx-auto">
+      
+        {/* FIXED: Enhanced Error Message with retry option */}
         {error && (
           <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
             <div className="flex justify-between items-center">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="text-red-700 hover:text-red-900">
-                <X size={20} />
-              </button>
+              <div>
+                <span className="font-semibold">Error: </span>
+                <span>{error}</span>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={retryFetch}
+                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
+                >
+                  Retry
+                </button>
+                <button onClick={() => setError(null)} className="text-red-700 hover:text-red-900">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
           </div>
         )}
+
+            <div className="bg-white shadow-sm border-b border-gray-200/60 sticky top-0 z-40">
+              <div className="max-w-7xl mx-auto">
+                <HomePage />
+              </div>
+            </div>
 
         {/* Header with Section Toggle */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-gray-100">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-2">
-                Attendance Management
+                Mentor Attendance Dashboard
               </h1>
-              <p className="text-gray-600">Manage and track employee attendance</p>
+              <p className="text-gray-600">Manage and track your mentee attendance</p>
             </div>
             <div className="flex gap-3">
               {/* Section Toggle Buttons */}
@@ -752,14 +778,14 @@ const renderEmployeeTableRow = (record, idx) => {
                   Attendance
                 </button>
                 <button
-                  onClick={() => setActiveSection('employees')}
+                  onClick={() => setActiveSection('mentees')}
                   className={`px-4 py-2 rounded-md transition-all duration-300 ${
-                    activeSection === 'employees'
+                    activeSection === 'mentees'
                       ? 'bg-white shadow-sm text-purple-600 font-medium'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Employees
+                  My Mentees
                 </button>
               </div>
               
@@ -780,50 +806,49 @@ const renderEmployeeTableRow = (record, idx) => {
             </div>
           </div>
 
-       {/* Statistics Cards - Fixed 4 cards layout */}
-<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-  {/* Total Employees */}
-  <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white shadow-lg">
-    <div className="flex items-center justify-between mb-2">
-      <Users size={24} />
-      <span className="text-3xl font-bold">{stats.totalEmployees}</span>
-    </div>
-    <p className="text-blue-100">Total Employees</p>
-  </div>
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Total Mentees */}
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <Users size={24} />
+                <span className="text-3xl font-bold">{stats.totalMentees}</span>
+              </div>
+              <p className="text-blue-100">Total Mentees</p>
+            </div>
 
-  {/* Present */}
-  <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-4 text-white shadow-lg">
-    <div className="flex items-center justify-between mb-2">
-      <CheckCircle size={24} />
-      <span className="text-3xl font-bold">{stats.present}</span>
-    </div>
-    <p className="text-green-100">Present Today</p>
-  </div>
+            {/* Present */}
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-4 text-white shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <CheckCircle size={24} />
+                <span className="text-3xl font-bold">{stats.present}</span>
+              </div>
+              <p className="text-green-100">Present Today</p>
+            </div>
 
-  {/* Late */}
-  <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-4 text-white shadow-lg">
-    <div className="flex items-center justify-between mb-2">
-      <Clock size={24} />
-      <span className="text-3xl font-bold">{stats.late}</span>
-    </div>
-    <p className="text-yellow-100">Late Arrivals</p>
-  </div>
+            {/* Late */}
+            <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-4 text-white shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <Clock size={24} />
+                <span className="text-3xl font-bold">{stats.late}</span>
+              </div>
+              <p className="text-yellow-100">Late Arrivals</p>
+            </div>
 
-  {/* Unexcused */}
-  <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl p-4 text-white shadow-lg">
-    <div className="flex items-center justify-between mb-2">
-      <AlertCircle size={24} />
-      <span className="text-3xl font-bold">{stats.unexcused}</span>
-    </div>
-    <p className="text-pink-100">Unexcused Absences</p>
-  </div>
-</div>
-
+            {/* Unexcused */}
+            <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl p-4 text-white shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <AlertCircle size={24} />
+                <span className="text-3xl font-bold">{stats.unexcused}</span>
+              </div>
+              <p className="text-pink-100">Unexcused Absences</p>
+            </div>
+          </div>
         </div>
 
         {/* Conditional Rendering based on Active Section */}
-        {activeSection === 'employees' ? (
-          <EmployeeDetailsSection />
+        {activeSection === 'mentees' ? (
+          <MenteeDetailsSection />
         ) : (
           <>
             {/* Filters and Search */}
@@ -834,7 +859,7 @@ const renderEmployeeTableRow = (record, idx) => {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                     <input
                       type="text"
-                      placeholder="Search by name, email, or role..."
+                      placeholder="Search mentees by name, email, or role..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
@@ -848,10 +873,10 @@ const renderEmployeeTableRow = (record, idx) => {
                     onChange={(e) => setSelectedUser(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
                   >
-                    <option value="all">All Employees</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.fullName} ({user.role})
+                    <option value="all">All Mentees</option>
+                    {mentees.map(mentee => (
+                      <option key={mentee.id} value={mentee.id}>
+                        {mentee.fullName} ({mentee.role})
                       </option>
                     ))}
                   </select>
@@ -870,7 +895,7 @@ const renderEmployeeTableRow = (record, idx) => {
                 <table className="w-full">
                   <thead className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
                     <tr>
-                      <th className="px-6 py-4 text-left font-medium">Employee Details</th>
+                      <th className="px-6 py-4 text-left font-medium">Mentee Details</th>
                       <th className="px-6 py-4 text-left font-medium">Date</th>
                       <th className="px-6 py-4 text-left font-medium">Check In</th>
                       <th className="px-6 py-4 text-left font-medium">Check Out</th>
@@ -888,7 +913,7 @@ const renderEmployeeTableRow = (record, idx) => {
                         </td>
                       </tr>
                     ) : (
-                      filteredRecords.map((record, idx) => renderEmployeeTableRow(record, idx))
+                      filteredRecords.map((record, idx) => renderMenteeTableRow(record, idx))
                     )}
                   </tbody>
                 </table>
@@ -943,16 +968,16 @@ const renderEmployeeTableRow = (record, idx) => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Employee *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mentee *</label>
                 <select
                   value={formData.userId}
                   onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
                 >
-                  <option value="">Select employee</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.fullName} - {user.role}
+                  <option value="">Select mentee</option>
+                  {mentees.map(mentee => (
+                    <option key={mentee.id} value={mentee.id}>
+                      {mentee.fullName} - {mentee.role}
                     </option>
                   ))}
                 </select>
@@ -1000,7 +1025,6 @@ const renderEmployeeTableRow = (record, idx) => {
                   <option value="Present">Present</option>
                   <option value="Late">Late</option>
                   <option value="Half Day">Half Day</option>
-                 
                   <option value="Excused">Excused</option>
                   <option value="Unexcused">Unexcused</option>
                 </select>
@@ -1019,93 +1043,88 @@ const renderEmployeeTableRow = (record, idx) => {
       )}
 
       {/* Edit Attendance Modal */}
-     {/* Edit Attendance Modal */}
-{showEditModal && editingRecord && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-2xl p-6 w-[500px] max-h-[90vh] overflow-y-auto shadow-2xl">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-gray-800">Edit Attendance Record</h3>
-        <button onClick={() => { setShowEditModal(false); setEditingRecord(null); resetForm(); }} className="text-gray-500 hover:text-gray-700 transition-colors">
-          <X size={24} />
-        </button>
-      </div>
+      {showEditModal && editingRecord && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-[500px] max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">Edit Attendance Record</h3>
+              <button onClick={() => { setShowEditModal(false); setEditingRecord(null); resetForm(); }} className="text-gray-500 hover:text-gray-700 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
-          <input
-            type="text"
-            value={getUserInfo(parseInt(formData.userId))?.fullName || ''}
-            disabled
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-          />
-        </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mentee</label>
+                <input
+                  type="text"
+                  value={getUserInfo(parseInt(formData.userId))?.fullName || ''}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                />
+              </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-          <input
-            type="text"
-            value={editingRecord.date ? formatDisplayDate(editingRecord.date) : 'No date'}
-            disabled
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-          />
-          <p className="text-xs text-gray-500 mt-1">Date cannot be changed for existing records</p>
-          {/* Hidden input to store the actual date value */}
-          <input
-            type="hidden"
-            value={formData.date}
-          />
-        </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                <input
+                  type="text"
+                  value={editingRecord.date ? formatDisplayDate(editingRecord.date) : 'No date'}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                />
+                <p className="text-xs text-gray-500 mt-1">Date cannot be changed for existing records</p>
+                <input type="hidden" value={formData.date} />
+              </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Check In</label>
-            <input
-              type="time"
-              value={formData.checkIn}
-              onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-            />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Check In</label>
+                  <input
+                    type="time"
+                    value={formData.checkIn}
+                    onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Check Out</label>
+                  <input
+                    type="time"
+                    value={formData.checkOut}
+                    onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Status *</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                >
+                  <option value="Present">Present</option>
+                  <option value="Late">Late</option>
+                  <option value="Half Day">Half Day</option>
+                  <option value="Excused">Excused</option>
+                  <option value="Unexcused">Unexcused</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleEditAttendance}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+              >
+                Update Attendance
+              </button>
+            </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Check Out</label>
-            <input
-              type="time"
-              value={formData.checkOut}
-              onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-            />
-          </div>
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Status *</label>
-          <select
-            value={formData.status}
-            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-          >
-            <option value="Present">Present</option>
-            <option value="Late">Late</option>
-            <option value="Half Day">Half Day</option>
-            <option value="Excused">Excused</option>
-            <option value="Unexcused">Unexcused</option>
-          </select>
-        </div>
-
-      <button
-  onClick={handleEditAttendance} // This now calls the fixed function
-  className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
->
-  Update Attendance
-</button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
     </div>
   );
 };
 
-export default AttendanceManagement;
+export default MentorAttendanceDashboard;

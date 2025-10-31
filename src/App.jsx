@@ -1,4 +1,4 @@
-// 📁 src/App.jsx
+
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
@@ -25,6 +25,16 @@ import AttendanceManagement from "./Admin/Pages/AttendanceManagement";
 import ReviewManagement from "./Admin/Pages/ReviewManagement";
 import LeaveRequestManagement from "./Admin/Pages/LeaveRequestManagement";
 import AdminMentorManagement from "./Admin/Pages/AdminMentorManagement";
+import AdminHolidayManagement from "./Admin/Pages/AdminHolidayManagement ";
+
+// 🔹 Mentor pages - IMPORT THE CORRECT COMPONENTS
+import MentorHome from "./Mentor/MentorHome";
+import MentorProfileManagement from "./Mentor/MentorProfileManagement";
+import MentorDashboardManagement from "./Mentor/MentorDashboard";
+import MentorSidebar from "./Mentor/MentorSidebar";
+import MentorAttendanceDashboard from "./Mentor/MentorAttendance";
+import MentorReview from "./Mentor/MentorReview";
+import MentorLeaveManagement from "./Mentor/MentorLeaveManagement";
 
 const App = () => {
   return (
@@ -108,18 +118,6 @@ const App = () => {
         />
 
         {/* 🔹 Admin Protected Routes */}
-
-        <Route
-  path="/admin-dashboard"
-  element={
-    <ProtectedRoute>
-      <AdminWrapper>
-        <AdminHome />
-      </AdminWrapper>
-    </ProtectedRoute>
-  }
-/>
-
         <Route
           path="/admin-dashboard"
           element={
@@ -180,22 +178,94 @@ const App = () => {
             </ProtectedRoute>
           }
         />
-
         <Route
-  path="/admin-mentor-management"
-  element={
-    <ProtectedRoute>
-      <AdminWrapper>
-        <AdminMentorManagement />
-      </AdminWrapper>
-    </ProtectedRoute>
-  }
-/>
+          path="/admin-mentor-management"
+          element={
+            <ProtectedRoute>
+              <AdminWrapper>
+                <AdminMentorManagement />
+              </AdminWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin-holidays"
+          element={
+            <ProtectedRoute>
+              <AdminWrapper>
+                <AdminHolidayManagement />
+              </AdminWrapper>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔹 Mentor Protected Routes - FIXED ROUTING */}
+        <Route
+          path="/mentor-home"
+          element={
+            <ProtectedRoute>
+              <MentorSidebar>
+                <MentorHome />
+              </MentorSidebar>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mentor-profileManagement"
+          element={
+            <ProtectedRoute>
+              <MentorSidebar>
+                <MentorProfileManagement />
+              </MentorSidebar>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mentor-dashboardmanagement"
+          element={
+            <ProtectedRoute>
+              <MentorSidebar>
+                <MentorDashboardManagement />
+              </MentorSidebar>
+            </ProtectedRoute>
+          }
+        />
+         <Route
+          path="/mentor-attendance"
+          element={
+            <ProtectedRoute>
+              <MentorSidebar>
+                <MentorAttendanceDashboard />
+              </MentorSidebar>
+            </ProtectedRoute>
+          }
+        />  
+        
+          <Route
+          path="/mentor-reviews"
+          element={
+            <ProtectedRoute>
+              <MentorSidebar>
+                <MentorReview />
+              </MentorSidebar>
+            </ProtectedRoute>
+          }
+        />
 
 
+          <Route
+          path="/mentor-leave"
+          element={
+            <ProtectedRoute>
+              <MentorSidebar>
+                <MentorLeaveManagement />
+              </MentorSidebar>
+            </ProtectedRoute>
+          }
+        />
 
         {/* 🔹 Catch-all redirect */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        {/* <Route path="*" element={<Navigate to="/login" replace />} /> */}
       </Routes>
     </Router>
   );

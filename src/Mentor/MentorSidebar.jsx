@@ -1,4 +1,4 @@
-// 📁 src/Admin/AdminSidebar.jsx
+// 📁 src/Mentor/MentorSidebar.jsx
 import React, { useState } from "react";
 import { 
   LayoutDashboard, 
@@ -6,30 +6,30 @@ import {
   MessageSquare, 
   User,
   ClipboardList,
-  FileText,
   ChevronLeft,
   ChevronRight,
   LogOut,
   Users,
-  Gift
+  BookOpen,
+  CheckCircle
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import axiosInstance from "../utils/axios";
+import axiosInstance from "../Utils/Axios";
 
-const AdminSidebar = ({ children }) => {
+const MentorSidebar = ({ children }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   const menuItems = [
-    { id: "home", label: "Home", icon: LayoutDashboard, color: "from-blue-500 to-indigo-500", path: "/admin-dashboard" },
-    { id: "profile", label: "Profile Management", icon: User, color: "from-purple-500 to-pink-500", path: "/admin-profile" },
-    { id: "dashboard", label: "Dashboard Management", icon: LayoutDashboard, color: "from-blue-500 to-indigo-500", path: "/admin-dashboard-management" },
-    { id: "attendance", label: "Attendance Management", icon: Calendar, color: "from-green-500 to-emerald-500", path: "/admin-attendance" },
-    { id: "review", label: "Review Management", icon: MessageSquare, color: "from-cyan-500 to-blue-500", path: "/admin-review" },
-    { id: "leave", label: "Leave Request Management", icon: FileText, color: "from-orange-500 to-red-500", path: "/admin-leave" },
-    { id: "mentor", label: "Mentor Management", icon: Users, color: "from-teal-500 to-cyan-500", path: "/admin-mentor-management" },
-    { id: "holidays", label: "Holiday Management", icon: Gift, color: "from-amber-500 to-orange-500", path: "/admin-holidays" }
+    { id: "dashboard", label: "Home", icon: LayoutDashboard, color: "from-blue-500 to-indigo-500", path: "/mentor-home" },
+    { id: "students", label: "Profile Management", icon: Users, color: "from-green-500 to-emerald-500", path: "/mentor-profileManagement" },
+    { id: "tasks", label: "Dashboard Management", icon: ClipboardList, color: "from-orange-500 to-red-500", path: "/mentor-dashboardmanagement" },
+    { id: "attendance", label: "Attendance Management", icon: Calendar, color: "from-purple-500 to-pink-500", path: "/mentor-attendance" },
+   
+    { id: "reviews", label: " Reviews Management", icon: MessageSquare, color: "from-cyan-500 to-blue-500", path: "/mentor-reviews" },
+    { id: "progress", label: "LeaveRequest Management", icon: CheckCircle, color: "from-teal-500 to-cyan-500", path: "/mentor-leave" },
+    
   ];
 
   const activeItem = menuItems.find(item => item.path === location.pathname)?.id;
@@ -62,12 +62,12 @@ const AdminSidebar = ({ children }) => {
               isCollapsed ? "justify-center w-full" : ""
             }`}
           >
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-xl">A</span>
+            <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-xl">M</span>
             </div>
             {!isCollapsed && (
-              <span className="font-bold text-xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-                Admin
+              <span className="font-bold text-xl bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                Mentor
               </span>
             )}
           </div>
@@ -156,9 +156,9 @@ const AdminSidebar = ({ children }) => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto">{children}</div>
+      <div className="flex-1 overflow-auto bg-gray-50">{children}</div>
     </div>
   );
 };
 
-export default AdminSidebar;
+export default MentorSidebar;

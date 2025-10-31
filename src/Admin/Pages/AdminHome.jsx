@@ -345,18 +345,7 @@ const AdminHome = () => {
               </h1>
               <p className="text-gray-600 mt-1 text-sm">Manage users, view analytics, and monitor system performance</p>
             </div>
-            <div className="mt-4 md:mt-0 flex items-center gap-3">
-              <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100 relative">
-                <Bell className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-              </button>
-              <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100">
-                <Settings className="w-5 h-5" />
-              </button>
-              <div className="bg-white rounded-xl shadow-sm px-4 py-2 border border-gray-200/60">
-                <p className="text-sm text-gray-600">Welcome back, <span className="font-semibold text-gray-800">Admin</span></p>
-              </div>
-            </div>
+          
           </div>
         </div>
       </div>

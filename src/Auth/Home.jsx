@@ -1,3 +1,4 @@
+// HomePage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Bell,
@@ -12,7 +13,9 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import UserProfileApi from "../Api/ProfileApi";
+import NotificationApi from "../NotificationApi/NotificationApi";
 import axiosInstance from "../Utils/Axios";
+import NotificationModal from "../NotificationApi/otificationModal";
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -21,11 +24,13 @@ const HomePage = () => {
   const [profileImage, setProfileImage] = useState("");
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [notifications] = useState(3);
+  const [notificationsCount, setNotificationsCount] = useState(0);
 
   useEffect(() => {
     fetchUserProfile();
+    fetchUnreadCount();
   }, []);
 
   const fetchUserProfile = async () => {
@@ -43,6 +48,15 @@ const HomePage = () => {
     }
   };
 
+  const fetchUnreadCount = async () => {
+    try {
+      const res = await NotificationApi.getUnreadCount();
+      setNotificationsCount(res.data?.unreadCount || 0);
+    } catch (error) {
+      console.error("Failed to fetch unread count:", error);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await axiosInstance.post("/Auth/revoke");
@@ -53,9 +67,15 @@ const HomePage = () => {
     }
   };
 
+  const handleNotificationClick = () => {
+    setShowNotificationModal(true);
+    // Reset unread count when opening notifications
+    setNotificationsCount(0);
+  };
+
   return (
     <>
-      {/* ✅ Navbar Section (not full-screen) */}
+      {/* ✅ Navbar Section */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
         <div className="flex items-center justify-between px-6 py-4">
           <div>
@@ -69,11 +89,14 @@ const HomePage = () => {
 
           <div className="flex items-center space-x-4">
             {/* Notification */}
-            <button className="relative p-2 rounded-lg hover:bg-gray-100">
+            <button 
+              onClick={handleNotificationClick}
+              className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            >
               <Bell className="w-6 h-6 text-gray-700" />
-              {notifications > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {notifications}
+              {notificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                  {notificationsCount}
                 </span>
               )}
             </button>
@@ -82,7 +105,7 @@ const HomePage = () => {
             <div className="relative">
               <button
                 onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100"
+                className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 {profileImage ? (
                   <img
@@ -134,7 +157,7 @@ const HomePage = () => {
         </div>
       </header>
 
-      {/* ✅ Keep modal fully functional */}
+      {/* ✅ Profile Modal */}
       {showProfileModal && (
         <ProfileModal
           userName={userName}
@@ -143,6 +166,11 @@ const HomePage = () => {
           onClose={() => setShowProfileModal(false)}
           onProfileUpdate={fetchUserProfile}
         />
+      )}
+
+      {/* ✅ Notification Modal */}
+      {showNotificationModal && (
+        <NotificationModal onClose={() => setShowNotificationModal(false)} />
       )}
     </>
   );

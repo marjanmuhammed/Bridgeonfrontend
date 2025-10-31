@@ -8,18 +8,18 @@ import {
   User, 
   Calendar, 
   Clock, 
-  Shield, 
   Users,
   Eye,
   Download,
   RefreshCw,
   Info
 } from "lucide-react";
-import { leaveRequestApi } from "../../AdminApi/LeaveRequestApi";
+import { leaveRequestApi } from "../MentorApi/MentorLeave";
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import HomePage from "../Auth/Home";
 
-const LeaveRequestManagement = () => {
+const MentorLeaveManagement = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,22 +29,35 @@ const LeaveRequestManagement = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
+  const [mentees, setMentees] = useState([]);
 
-  // Check user role on component mount
+  // Check user role and load data on component mount
   useEffect(() => {
-    const checkUserRole = async () => {
+    const initializeData = async () => {
       try {
         setLoading(true);
         const userInfo = await leaveRequestApi.getUserInfo();
         
+        console.log('🟡 User Info:', userInfo);
+        
         if (userInfo && userInfo.hasAccess) {
           setUserRole(userInfo.role);
-          setUserName(userInfo.userName);
+          setUserName(userInfo.userName || userInfo.fullName || 'Mentor');
+          
+          if (userInfo.role === 'Mentor') {
+            // Load both mentees and mentor-specific pending requests
+            await Promise.all([
+              fetchMentees(),
+              fetchMentorPendingRequests()
+            ]);
+          } else {
+            setError('Access Denied. Only Mentors can view this page.');
+          }
         } else {
-          setError('Access Denied. Only Mentors and Admins can view this page.');
+          setError('Access Denied. Only Mentors can view this page.');
         }
       } catch (err) {
-        console.error('Error fetching user info:', err);
+        console.error('❌ Error initializing data:', err);
         if (err.response?.status === 401) {
           setError('Please login to access this page.');
         } else {
@@ -55,29 +68,73 @@ const LeaveRequestManagement = () => {
       }
     };
     
-    checkUserRole();
+    initializeData();
   }, []);
 
-  // Fetch pending leave requests
-  const fetchPendingRequests = async () => {
+  // Fetch mentor's mentees
+  const fetchMentees = async () => {
+    try {
+      console.log('🟡 Fetching mentees...');
+      const menteesData = await leaveRequestApi.getMyMentees();
+      console.log('🟢 Mentees loaded:', menteesData);
+      
+      if (menteesData && Array.isArray(menteesData)) {
+        setMentees(menteesData);
+      } else {
+        console.log('🟡 No mentees data or invalid format:', menteesData);
+        setMentees([]);
+        toast.info('No mentees assigned to you yet.');
+      }
+    } catch (err) {
+      console.error('❌ Error fetching mentees:', err);
+      toast.error('Failed to load mentees list');
+    }
+  };
+
+  // ✅ UPDATED: Fetch mentor-specific pending leave requests
+  const fetchMentorPendingRequests = async () => {
     try {
       setError(null);
-      const data = await leaveRequestApi.getPendingRequests();
-      setRequests(data);
-      toast.success(`Loaded ${data.length} pending requests`);
+      console.log('🟡 Fetching mentor-specific pending requests...');
+      
+      // Use the new dedicated endpoint
+      const mentorRequests = await leaveRequestApi.getMentorPendingRequests();
+      console.log('🟢 Mentor pending requests:', mentorRequests);
+      
+      if (!mentorRequests || mentorRequests.length === 0) {
+        setRequests([]);
+        toast.info('No pending leave requests from your mentees.');
+        return;
+      }
+      
+      setRequests(mentorRequests);
+      toast.success(`Loaded ${mentorRequests.length} pending requests from your mentees`);
+      
     } catch (err) {
-      console.error('Error fetching leave requests:', err);
+      console.error('❌ Error fetching mentor pending requests:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to load leave requests. Please try again.';
       setError(errorMessage);
       toast.error(errorMessage);
     }
   };
 
-  useEffect(() => {
-    if (userRole) {
-      fetchPendingRequests();
+  // Refresh all data
+  const handleRefresh = async () => {
+    try {
+      setLoading(true);
+      toast.info('Refreshing data...');
+      await Promise.all([
+        fetchMentees(),
+        fetchMentorPendingRequests()
+      ]);
+      toast.success('Data refreshed successfully!');
+    } catch (err) {
+      console.error('❌ Error refreshing data:', err);
+      toast.error('Failed to refresh data');
+    } finally {
+      setLoading(false);
     }
-  }, [userRole]);
+  };
 
   // Handle approve/reject action
   const handleAction = async (requestId, approve) => {
@@ -88,9 +145,10 @@ const LeaveRequestManagement = () => {
       const reviewData = {
         requestId: requestId,
         approve: approve,
-        notes: '' // Empty notes since we removed the notes field
+        notes: ''
       };
 
+      console.log('🟡 Processing leave request:', reviewData);
       await leaveRequestApi.reviewRequest(reviewData);
       
       // Remove the processed request from the list
@@ -99,8 +157,8 @@ const LeaveRequestManagement = () => {
       // Show success toast
       toast.success(`Leave request ${approve ? 'approved' : 'rejected'} successfully!`);
     } catch (err) {
-      console.error('Error processing leave request:', err);
-      const errorMessage = 'Failed to process the request. Please try again.';
+      console.error('❌ Error processing leave request:', err);
+      const errorMessage = err.response?.data?.message || 'Failed to process the request. Please try again.';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -122,23 +180,31 @@ const LeaveRequestManagement = () => {
 
   // Format date for display
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      weekday: 'short'
-    });
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        weekday: 'short'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
   };
 
   // Format datetime for display
   const formatDateTime = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
   };
 
   // Get status color
@@ -188,21 +254,15 @@ const LeaveRequestManagement = () => {
     return colors[type] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  // Refresh data
-  const handleRefresh = () => {
-    toast.info('Refreshing leave requests...');
-    fetchPendingRequests();
-  };
-
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 p-4">
         <div className="max-w-full mx-auto">
           <div className="bg-white rounded-2xl shadow-lg p-8 flex items-center justify-center">
             <div className="flex items-center gap-4">
-              <Loader className="animate-spin text-blue-600" size={24} />
-              <span className="text-gray-700">Loading...</span>
+              <Loader className="animate-spin text-purple-600" size={24} />
+              <span className="text-gray-700">Loading mentor dashboard...</span>
             </div>
           </div>
         </div>
@@ -211,16 +271,18 @@ const LeaveRequestManagement = () => {
   }
 
   // Error state
-  if (error && !userRole) {
+  if (error || userRole !== 'Mentor') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 p-4">
         <div className="max-w-full mx-auto">
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
             <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
-            <div className="text-red-500 text-lg mb-4">{error}</div>
+            <div className="text-red-500 text-lg mb-4">
+              {error || 'Access Denied. Only Mentors can view this page.'}
+            </div>
             <button 
               onClick={() => window.location.href = '/login'} 
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
             >
               Go to Login
             </button>
@@ -231,34 +293,39 @@ const LeaveRequestManagement = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 p-4">
       <div className="max-w-full mx-auto">
+
+          <div className="bg-white shadow-sm border-b border-gray-200/60 sticky top-0 z-40">
+                      <div className="max-w-7xl mx-auto">
+                        <HomePage />
+                      </div>
+                    </div>
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border border-gray-100">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <FileText className="text-blue-600" size={32} />
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <FileText className="text-purple-600" size={32} />
               </div>
               <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-gray-800">Leave Request Management</h1>
+                <h1 className="text-2xl lg:text-3xl font-bold text-gray-800">Mentor Leave Management</h1>
                 <p className="text-gray-600">
-                  {userRole === 'Admin' 
-                    ? 'Review and manage all employee leave requests' 
-                    : `Review leave requests from your mentees`}
+                  Review and manage leave requests from your mentees
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <div className="text-2xl font-bold text-blue-600">{requests.length}</div>
+                <div className="text-2xl font-bold text-purple-600">{requests.length}</div>
                 <div className="text-sm text-gray-600">Pending Requests</div>
               </div>
               <button
                 onClick={handleRefresh}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-all duration-300 border border-blue-200 shadow-sm hover:shadow-md"
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-purple-600 rounded-lg hover:bg-purple-50 transition-all duration-300 border border-purple-200 shadow-sm hover:shadow-md disabled:opacity-50"
               >
-                <RefreshCw size={16} />
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                 Refresh
               </button>
             </div>
@@ -266,12 +333,12 @@ const LeaveRequestManagement = () => {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-lg text-white shadow-lg">
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-lg text-white shadow-lg">
               <div className="flex items-center gap-3">
-                <User className="text-white" size={24} />
+                <Users className="text-white" size={24} />
                 <div>
-                  <div className="text-2xl font-bold">{requests.length}</div>
-                  <div className="text-blue-100">Total Pending</div>
+                  <div className="text-2xl font-bold">{mentees.length}</div>
+                  <div className="text-purple-100">Total Mentees</div>
                 </div>
               </div>
             </div>
@@ -280,16 +347,16 @@ const LeaveRequestManagement = () => {
                 <Clock className="text-white" size={24} />
                 <div>
                   <div className="text-2xl font-bold">{requests.length}</div>
-                  <div className="text-yellow-100">Awaiting Review</div>
+                  <div className="text-yellow-100">Pending Reviews</div>
                 </div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-lg text-white shadow-lg">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-lg text-white shadow-lg">
               <div className="flex items-center gap-3">
-                {userRole === 'Admin' ? <Shield className="text-white" size={24} /> : <Users className="text-white" size={24} />}
+                <User className="text-white" size={24} />
                 <div>
-                  <div className="text-lg font-bold">{userRole}</div>
-                  <div className="text-purple-100">{userName}</div>
+                  <div className="text-lg font-bold">Mentor</div>
+                  <div className="text-blue-100">{userName}</div>
                 </div>
               </div>
             </div>
@@ -305,19 +372,48 @@ const LeaveRequestManagement = () => {
           </div>
 
           {/* Role Information */}
-          <div className={`p-4 rounded-lg border ${userRole === 'Admin' ? 'bg-blue-50 border-blue-300' : 'bg-purple-50 border-purple-300'}`}>
+          <div className="p-4 rounded-lg border bg-purple-50 border-purple-300">
             <div className="flex items-center gap-2 mb-2">
-              {userRole === 'Admin' ? <Shield className="text-blue-600" size={20} /> : <Users className="text-purple-600" size={20} />}
-              <span className={`font-bold ${userRole === 'Admin' ? 'text-blue-800' : 'text-purple-800'}`}>
-                {userRole} Access Level
+              <Users className="text-purple-600" size={20} />
+              <span className="font-bold text-purple-800">
+                Mentor Access Level
               </span>
             </div>
-            <p className={`text-sm ${userRole === 'Admin' ? 'text-blue-700' : 'text-purple-700'}`}>
-              {userRole === 'Admin' 
-                ? 'You have access to review all pending leave requests across the organization.' 
-                : 'You can only review leave requests from users assigned to you as mentees.'}
+            <p className="text-sm text-purple-700">
+              You can review and manage leave requests from your {mentees.length} assigned mentees only.
+              The system automatically filters requests to show only those from your mentees.
             </p>
           </div>
+
+          {/* Mentees List */}
+          {mentees.length > 0 && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                <Users size={18} />
+                Your Mentees ({mentees.length})
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {mentees.map((mentee, index) => (
+                  <div key={mentee.id || mentee.userId || `mentee-${index}`} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-blue-100">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                      <User className="text-white" size={14} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 truncate text-sm">
+                        {mentee.fullName || mentee.name || mentee.userName || 'Unknown'}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {mentee.email || mentee.userEmail || 'No email'}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        ID: {mentee.id || mentee.userId || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Error Alert */}
@@ -338,9 +434,9 @@ const LeaveRequestManagement = () => {
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-200">
           <div className="overflow-x-auto">
             <table className="w-full min-w-full">
-              <thead className="bg-gradient-to-r from-gray-800 to-gray-900 text-white">
+              <thead className="bg-gradient-to-r from-purple-800 to-purple-900 text-white">
                 <tr>
-                  <th className="px-4 py-3 text-left font-bold text-sm">User Details</th>
+                  <th className="px-4 py-3 text-left font-bold text-sm">Mentee Details</th>
                   <th className="px-4 py-3 text-left font-bold text-sm">Leave Date</th>
                   <th className="px-4 py-3 text-left font-bold text-sm">Leave Type</th>
                   <th className="px-4 py-3 text-left font-bold text-sm">Reason</th>
@@ -357,8 +453,8 @@ const LeaveRequestManagement = () => {
                         <div>
                           <p className="text-lg font-medium">No Pending Requests</p>
                           <p className="text-sm">
-                            {userRole === 'Admin' 
-                              ? 'All leave requests have been processed' 
+                            {mentees.length === 0 
+                              ? 'No mentees assigned to you yet' 
                               : 'No pending leave requests from your mentees'}
                           </p>
                         </div>
@@ -373,7 +469,7 @@ const LeaveRequestManagement = () => {
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:from-blue-600 group-hover:to-blue-700 transition-all duration-300 shadow-md">
+                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center group-hover:from-purple-600 group-hover:to-purple-700 transition-all duration-300 shadow-md">
                             <User className="text-white" size={18} />
                           </div>
                           <div className="min-w-0 flex-1">
@@ -386,7 +482,7 @@ const LeaveRequestManagement = () => {
                       
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <Calendar size={16} className="text-blue-500 flex-shrink-0" />
+                          <Calendar size={16} className="text-purple-500 flex-shrink-0" />
                           <span className="font-bold text-gray-900 whitespace-nowrap">
                             {formatDate(request.date)}
                           </span>
@@ -403,20 +499,22 @@ const LeaveRequestManagement = () => {
                         <div className="max-w-xs">
                           <div className="flex items-center gap-2">
                             <p className="text-gray-700 line-clamp-1 text-sm">
-                              {request.reason.length > 50 ? `${request.reason.substring(0, 50)}...` : request.reason}
+                              {request.reason && request.reason.length > 50 ? `${request.reason.substring(0, 50)}...` : request.reason}
                             </p>
-                            <button
-                              onClick={() => handleViewReason(request)}
-                              className="flex items-center gap-1 text-blue-600 hover:text-blue-700 transition-colors p-1 hover:bg-blue-50 rounded"
-                              title="View full reason"
-                            >
-                              <Info size={14} />
-                            </button>
+                            {request.reason && request.reason.length > 50 && (
+                              <button
+                                onClick={() => handleViewReason(request)}
+                                className="flex items-center gap-1 text-purple-600 hover:text-purple-700 transition-colors p-1 hover:bg-purple-50 rounded"
+                                title="View full reason"
+                              >
+                                <Info size={14} />
+                              </button>
+                            )}
                           </div>
                           {request.proofImageUrl && request.proofImageUrl !== "" && request.proofImageUrl !== "string" && (
                             <button
                               onClick={() => handleViewDetails(request)}
-                              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 transition-colors mt-1 font-medium"
+                              className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 transition-colors mt-1 font-medium"
                             >
                               <Eye size={14} />
                               View Proof
@@ -471,18 +569,16 @@ const LeaveRequestManagement = () => {
 
         {/* Instructions */}
         {requests.length > 0 && (
-          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-            <h3 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
+          <div className="mt-6 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">
+            <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
               <AlertCircle size={18} />
-              Review Instructions
+              Mentor Review Instructions
             </h3>
-            <ul className="text-blue-700 list-disc list-inside space-y-2 text-sm">
-              <li>Carefully review each leave request before making a decision</li>
+            <ul className="text-purple-700 list-disc list-inside space-y-2 text-sm">
+              <li>Review each leave request carefully before making a decision</li>
               <li>Approved leaves will be automatically marked as "Excused" in attendance records</li>
               <li>Rejected leaves will remain as "Unexcused" absence</li>
-              {userRole === 'Mentor' && (
-                <li className="text-purple-700 font-bold">You can only review leave requests from your assigned mentees</li>
-              )}
+              <li className="font-bold">You are only reviewing requests from your assigned mentees</li>
             </ul>
           </div>
         )}
@@ -491,7 +587,7 @@ const LeaveRequestManagement = () => {
       {/* Request Detail Modal */}
       {showDetailModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-blue-300">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-300">
             <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-800">Leave Request Details</h3>
               <button 
@@ -505,19 +601,19 @@ const LeaveRequestManagement = () => {
             <div className="space-y-6">
               {/* User Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                  <h4 className="font-bold text-blue-800 mb-3">User Information</h4>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                  <h4 className="font-bold text-purple-800 mb-3">Mentee Information</h4>
                   <div className="space-y-3">
                     <div>
-                      <span className="text-sm text-blue-600 font-medium">Name:</span>
+                      <span className="text-sm text-purple-600 font-medium">Name:</span>
                       <p className="font-bold text-gray-900">{selectedRequest.userName}</p>
                     </div>
                     <div>
-                      <span className="text-sm text-blue-600 font-medium">Email:</span>
+                      <span className="text-sm text-purple-600 font-medium">Email:</span>
                       <p className="font-bold text-gray-900">{selectedRequest.userEmail}</p>
                     </div>
                     <div>
-                      <span className="text-sm text-blue-600 font-medium">User ID:</span>
+                      <span className="text-sm text-purple-600 font-medium">User ID:</span>
                       <p className="font-bold text-gray-900">{selectedRequest.userId}</p>
                     </div>
                   </div>
@@ -566,10 +662,10 @@ const LeaveRequestManagement = () => {
               {selectedRequest.proofImageUrl && selectedRequest.proofImageUrl !== "" && selectedRequest.proofImageUrl !== "string" && (
                 <div>
                   <h4 className="font-bold text-gray-700 mb-3">Proof Document</h4>
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <FileText className="text-blue-600" size={24} />
+                        <FileText className="text-purple-600" size={24} />
                         <div>
                           <p className="font-bold text-gray-800">Proof document attached</p>
                           <p className="text-sm text-gray-600">Click to view or download</p>
@@ -579,7 +675,7 @@ const LeaveRequestManagement = () => {
                         href={selectedRequest.proofImageUrl} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg font-bold"
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all duration-300 shadow-md hover:shadow-lg font-bold"
                       >
                         <Download size={16} />
                         Download
@@ -657,7 +753,7 @@ const LeaveRequestManagement = () => {
               <div className="flex justify-end pt-4">
                 <button
                   onClick={() => setShowReasonModal(false)}
-                  className="px-6 py-2 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-300 shadow-md hover:shadow-lg font-bold"
+                  className="px-6 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all duration-300 shadow-md hover:shadow-lg font-bold"
                 >
                   Close
                 </button>
@@ -670,4 +766,4 @@ const LeaveRequestManagement = () => {
   );
 };
 
-export default LeaveRequestManagement;
+export default MentorLeaveManagement;

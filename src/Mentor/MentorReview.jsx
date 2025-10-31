@@ -11,13 +11,13 @@ import {
   Grading, Score, TrendingUp, Refresh, Search,
   FilterList, Download, Visibility
 } from '@mui/icons-material';
-import reviewScoreApi from '../../Api/reviewScoreApi';
-import userApi from '../../Api/userApi';
+import mentorReviewApi from '../MentorApi/mentorReviewApi';
+import HomePage from '../Auth/Home';
 
-const ReviewManagement = () => {
+const MentorReview = () => {
   const theme = useTheme();
   const [reviewScores, setReviewScores] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [mentees, setMentees] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingScore, setEditingScore] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -46,17 +46,20 @@ const ReviewManagement = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [scoresResponse, usersResponse] = await Promise.all([
-        reviewScoreApi.getAllReviewScores(),
-        userApi.getAllUsers()
-      ]);
+      // First get the mentor's mentees
+      const menteesResponse = await mentorReviewApi.getMyMentees();
+      setMentees(menteesResponse || []);
       
-      setReviewScores(scoresResponse || []);
+      // Then get all review scores and filter only those belonging to mentor's mentees
+      const scoresResponse = await mentorReviewApi.getAllReviewScores();
+      const menteeIds = menteesResponse.map(mentee => mentee.id);
       
-      const filteredUsers = (usersResponse || []).filter(user => 
-        user && user.role && user.role !== 'Admin'
+      // Filter review scores to only show those for the mentor's mentees
+      const mentorReviewScores = (scoresResponse || []).filter(score => 
+        menteeIds.includes(score.userId)
       );
-      setUsers(filteredUsers);
+      
+      setReviewScores(mentorReviewScores);
       
     } catch (error) {
       console.error('Error loading data:', error);
@@ -73,7 +76,7 @@ const ReviewManagement = () => {
   const validateForm = () => {
     const errors = {};
     
-    if (!formData.userId) errors.userId = 'User is required';
+    if (!formData.userId) errors.userId = 'Mentee is required';
     if (!formData.week || formData.week < 1) errors.week = 'Valid week is required';
     if (!formData.reviewDate) errors.reviewDate = 'Review date is required';
     if (!formData.reviewerName?.trim()) errors.reviewerName = 'Reviewer name is required';
@@ -154,10 +157,10 @@ const ReviewManagement = () => {
       };
 
       if (editingScore) {
-        await reviewScoreApi.updateReviewScore(editingScore.id, submitData);
+        await mentorReviewApi.updateReviewScore(editingScore.id, submitData);
         showSnackbar('Review score updated successfully');
       } else {
-        await reviewScoreApi.createReviewScore(submitData);
+        await mentorReviewApi.createReviewScore(submitData);
         showSnackbar('Review score created successfully');
       }
 
@@ -178,7 +181,7 @@ const ReviewManagement = () => {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this review score?')) {
       try {
-        await reviewScoreApi.deleteReviewScore(id);
+        await mentorReviewApi.deleteReviewScore(id);
         showSnackbar('Review score deleted successfully');
         await loadData();
       } catch (error) {
@@ -188,9 +191,9 @@ const ReviewManagement = () => {
     }
   };
 
-  const getUserName = (userId) => {
-    const user = users.find(u => u.id === userId);
-    return user ? user.fullName : 'Unknown User';
+  const getMenteeName = (userId) => {
+    const mentee = mentees.find(m => m.id === userId);
+    return mentee ? mentee.fullName : 'Unknown Mentee';
   };
 
   const calculateTotal = () => {
@@ -208,7 +211,7 @@ const ReviewManagement = () => {
 
   // Filter data based on search and filter criteria
   const filteredScores = reviewScores.filter(score => {
-    const matchesSearch = getUserName(score.userId).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = getMenteeName(score.userId).toLowerCase().includes(searchTerm.toLowerCase()) ||
                          score.reviewerName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesWeek = !filterWeek || score.week.toString() === filterWeek;
     return matchesSearch && matchesWeek;
@@ -256,7 +259,16 @@ const ReviewManagement = () => {
   );
 
   return (
+
+    
     <Box sx={{ p: 3, background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', minHeight: '100vh' }}>
+
+         <div className="bg-white shadow-sm border-b border-gray-200/60 sticky top-0 z-40">
+                          <div className="max-w-7xl mx-auto">
+                            <HomePage />
+                          </div>
+                        </div>
+             
       {/* Header Section */}
       <Slide in={true} direction="down" timeout={500}>
         <Card 
@@ -268,14 +280,15 @@ const ReviewManagement = () => {
             boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
           }}
         >
+
           <CardContent sx={{ p: 4 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box>
                 <Typography variant="h3" component="h1" fontWeight="bold" gutterBottom>
-                  Review Scores Management
+                  Mentor Reviews Management
                 </Typography>
                 <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                  Manage and track student performance reviews
+                  Manage and track your {mentees.length} mentees' performance reviews
                 </Typography>
               </Box>
               <Avatar
@@ -308,8 +321,8 @@ const ReviewManagement = () => {
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <StatsCard
-                  title="Active Students"
-                  value={users.length}
+                  title="My Mentees"
+                  value={mentees.length}
                   icon={<Person sx={{ fontSize: 28 }} />}
                   color={theme.palette.info.main}
                 />
@@ -342,7 +355,7 @@ const ReviewManagement = () => {
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
                 <TextField
-                  placeholder="Search users or reviewers..."
+                  placeholder="Search mentees or reviewers..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   InputProps={{
@@ -409,21 +422,26 @@ const ReviewManagement = () => {
                   variant="contained"
                   startIcon={<Add />}
                   onClick={() => handleOpenDialog()}
-                  disabled={loading}
+                  disabled={loading || mentees.length === 0}
                   sx={{
                     borderRadius: 2,
                     px: 3,
                     py: 1,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)',
-                    '&:hover': {
+                    background: mentees.length === 0 ? theme.palette.grey[400] : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    boxShadow: mentees.length === 0 ? 'none' : '0 4px 15px rgba(102, 126, 234, 0.3)',
+                    '&:hover': mentees.length === 0 ? {} : {
                       boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
                     }
                   }}
                 >
-                  Add Review
+                  {mentees.length === 0 ? 'No Mentees Available' : 'Add Review'}
                 </Button>
               </Box>
+              {mentees.length === 0 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  You don't have any mentees assigned yet. Please contact administration to get mentees assigned.
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -444,7 +462,7 @@ const ReviewManagement = () => {
                         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                       }}>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '1rem' }}>
-                          Student
+                          Mentee
                         </TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold', fontSize: '1rem' }}>
                           Week
@@ -488,11 +506,11 @@ const ReviewManagement = () => {
                             <TableCell>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                 <Avatar sx={{ bgcolor: getScoreColor(score.totalScore), width: 40, height: 40 }}>
-                                  {getUserName(score.userId).split(' ').map(n => n[0]).join('')}
+                                  {getMenteeName(score.userId).split(' ').map(n => n[0]).join('')}
                                 </Avatar>
                                 <Box>
                                   <Typography variant="subtitle1" fontWeight="medium">
-                                    {getUserName(score.userId)}
+                                    {getMenteeName(score.userId)}
                                   </Typography>
                                 </Box>
                               </Box>
@@ -595,10 +613,15 @@ const ReviewManagement = () => {
                   {filteredScores.length === 0 && (
                     <Box sx={{ textAlign: 'center', py: 8 }}>
                       <Typography variant="h6" color="text.secondary" gutterBottom>
-                        No review scores found
+                        {mentees.length === 0 ? 'No mentees assigned' : 'No review scores found for your mentees'}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {searchTerm || filterWeek ? 'Try adjusting your search or filter criteria' : 'Get started by adding your first review score'}
+                        {searchTerm || filterWeek 
+                          ? 'Try adjusting your search or filter criteria' 
+                          : mentees.length === 0 
+                            ? 'Please contact administration to get mentees assigned' 
+                            : 'Get started by adding your first review score'
+                        }
                       </Typography>
                     </Box>
                   )}
@@ -619,7 +642,7 @@ const ReviewManagement = () => {
           sx: {
             borderRadius: 3,
             background: 'white',
-            overflow: 'visible' // Fix for text visibility
+            overflow: 'visible'
           }
         }}
       >
@@ -629,13 +652,13 @@ const ReviewManagement = () => {
           textAlign: 'center',
           py: 3,
           position: 'relative',
-          zIndex: 1 // Ensure text stays on top
+          zIndex: 1
         }}>
           <Typography variant="h4" component="div" fontWeight="bold" sx={{ position: 'relative', zIndex: 2 }}>
             {editingScore ? 'Edit Review Score' : 'Add New Review Score'}
           </Typography>
           <Typography variant="body1" sx={{ opacity: 0.9, mt: 1, position: 'relative', zIndex: 2 }}>
-            {editingScore ? 'Update the review score details' : 'Create a new review score entry'}
+            {editingScore ? 'Update the review score details' : 'Create a new review score entry for your mentee'}
           </Typography>
         </DialogTitle>
         
@@ -645,7 +668,7 @@ const ReviewManagement = () => {
               <TextField
                 select
                 fullWidth
-                label="Student"
+                label="Mentee"
                 name="userId"
                 value={formData.userId}
                 onChange={handleInputChange}
@@ -666,13 +689,13 @@ const ReviewManagement = () => {
                   }
                 }}
               >
-                <MenuItem value="">Select Student</MenuItem>
-                {users.map((user) => (
-                  <MenuItem key={user.id} value={user.id}>
+                <MenuItem value="">Select Mentee</MenuItem>
+                {mentees.map((mentee) => (
+                  <MenuItem key={mentee.id} value={mentee.id}>
                     <Box>
-                      <Typography variant="body1">{user.fullName}</Typography>
+                      <Typography variant="body1">{mentee.fullName}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {user.email}
+                        {mentee.email}
                       </Typography>
                     </Box>
                   </MenuItem>
@@ -919,4 +942,4 @@ const ReviewManagement = () => {
   );
 };
 
-export default ReviewManagement;
+export default MentorReview;

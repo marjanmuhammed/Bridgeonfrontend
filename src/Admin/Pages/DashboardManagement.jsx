@@ -82,6 +82,11 @@ const DashboardManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewDialog, setViewDialog] = useState({ open: false, data: null });
 
+  // New state variables for counts and filters
+  const [dateFilter, setDateFilter] = useState('all');
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+
   useEffect(() => {
     loadUserProfiles();
   }, []);
@@ -211,36 +216,32 @@ const DashboardManagement = () => {
     setFeeDialog({ open: true });
   };
 
-  // FIXED: Properly handle fee saving with correct API calls
   const handleSaveFees = async () => {
-  try {
-    console.log('Saving fees for user:', selectedUser.id, 'with data:', feeData);
+    try {
+      console.log('Saving fees for user:', selectedUser.id, 'with data:', feeData);
 
-    // If only feeStatus is being updated (similar to dropdown behavior)
-    if (Object.keys(feeData).length === 1 || 
-        (feeData.feeCategory === selectedUser.review?.feeCategory &&
-         feeData.pendingAmount === selectedUser.review?.pendingAmount &&
-         new Date(feeData.dueDate).toDateString() === new Date(selectedUser.review?.dueDate).toDateString() &&
-         feeData.feeStatus !== selectedUser.review?.feeStatus)) {
-      
-      await adminReviewApi.updateFeeStatus(selectedUser.id, feeData.feeStatus);
-      showSnackbar('Fee status updated successfully');
-    } 
-    else {
-      // otherwise perform full update
-      await adminReviewApi.addOrUpdateFees(selectedUser.id, feeData);
-      showSnackbar('Fees updated successfully');
+      if (Object.keys(feeData).length === 1 || 
+          (feeData.feeCategory === selectedUser.review?.feeCategory &&
+           feeData.pendingAmount === selectedUser.review?.pendingAmount &&
+           new Date(feeData.dueDate).toDateString() === new Date(selectedUser.review?.dueDate).toDateString() &&
+           feeData.feeStatus !== selectedUser.review?.feeStatus)) {
+        
+        await adminReviewApi.updateFeeStatus(selectedUser.id, feeData.feeStatus);
+        showSnackbar('Fee status updated successfully');
+      } 
+      else {
+        await adminReviewApi.addOrUpdateFees(selectedUser.id, feeData);
+        showSnackbar('Fees updated successfully');
+      }
+
+      setFeeDialog({ open: false });
+      loadUserProfiles();
+
+    } catch (error) {
+      console.error('Error in handleSaveFees:', error);
+      showSnackbar('Error updating fees', 'error');
     }
-
-    setFeeDialog({ open: false });
-    loadUserProfiles();
-
-  } catch (error) {
-    console.error('Error in handleSaveFees:', error);
-    showSnackbar('Error updating fees', 'error');
-  }
-};
-
+  };
 
   const handleUpdateFeeStatus = async (user, newStatus) => {
     try {
@@ -251,6 +252,19 @@ const DashboardManagement = () => {
     } catch (error) {
       console.error('Error updating fee status:', error);
       showSnackbar('Error updating fee status', 'error');
+    }
+  };
+
+  const handleDeleteFees = async (user) => {
+    if (window.confirm(`Are you sure you want to delete fees for ${user.fullName}?`)) {
+      try {
+        await adminReviewApi.deleteFees(user.id);
+        showSnackbar('Fees deleted successfully');
+        loadUserProfiles();
+      } catch (error) {
+        console.error('Error deleting fees:', error);
+        showSnackbar('Error deleting fees', 'error');
+      }
     }
   };
 
@@ -275,11 +289,44 @@ const DashboardManagement = () => {
     }
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Calculate counts
+  const totalAssignedReviews = users.filter(user => user.hasReview && user.review.reviewStatus !== 'Not Assigned').length;
+  const pendingFeesCount = users.filter(user => user.hasReview && user.review.feeStatus === 'Pending').length;
+  
+  // Date filtering logic
+  const getFilteredUsers = () => {
+    let filtered = users.filter(
+      (user) =>
+        user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (dateFilter === 'today') {
+      const today = new Date().toDateString();
+      filtered = filtered.filter(user => 
+        user.hasReview && user.review.reviewDate && 
+        new Date(user.review.reviewDate).toDateString() === today
+      );
+    } else if (dateFilter === 'tomorrow') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toDateString();
+      filtered = filtered.filter(user => 
+        user.hasReview && user.review.reviewDate && 
+        new Date(user.review.reviewDate).toDateString() === tomorrowStr
+      );
+    } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
+      filtered = filtered.filter(user => 
+        user.hasReview && user.review.reviewDate && 
+        new Date(user.review.reviewDate) >= customStartDate &&
+        new Date(user.review.reviewDate) <= customEndDate
+      );
+    }
+
+    return filtered;
+  };
+
+  const filteredUsers = getFilteredUsers();
 
   if (loading) {
     return (
@@ -292,23 +339,98 @@ const DashboardManagement = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        <Box
-          sx={{
-            background: "linear-gradient(135deg, #2196f3 30%, #21cbf3 90%)",
-            p: 3,
-            borderRadius: 3,
-            boxShadow: "0 4px 20px rgba(33, 203, 243, 0.3)",
-            mb: 4
-          }}
-        >
-          <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'white' }}>
+      <Container
+        maxWidth="lg"
+        sx={{
+          mt: 4,
+          mb: 4,
+        }}
+      >
+        {/* Header Section */}
+        <Box sx={{ mb: 4 }}>
+          <Typography 
+            variant="h3" 
+            sx={{ 
+              fontWeight: 'bold', 
+              color: 'white',
+              fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
+              mb: 1
+            }}
+          >
+            Dashboard Management
+          </Typography>
+          <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'white', mb: 1 }}>
             Admin Review Dashboard
           </Typography>
           <Typography sx={{ color: 'white', opacity: 0.9 }}>
             Manage user reviews and fee information easily
           </Typography>
         </Box>
+
+        {/* Stats Cards */}
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              borderRadius: 3,
+              boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+            }}>
+              <CardContent>
+                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                  {users.length}
+                </Typography>
+                <Typography variant="h6">Total Users</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ 
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              borderRadius: 3,
+              boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+            }}>
+              <CardContent>
+                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                  {totalAssignedReviews}
+                </Typography>
+                <Typography variant="h6">Assigned Reviews</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ 
+              background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+              color: 'white',
+              borderRadius: 3,
+              boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+            }}>
+              <CardContent>
+                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                  {pendingFeesCount}
+                </Typography>
+                <Typography variant="h6">Pending Fees</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ 
+              background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+              color: 'white',
+              borderRadius: 3,
+              boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+            }}>
+              <CardContent>
+                <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                  {users.filter(user => user.hasReview && user.review.feeStatus === 'Completed').length}
+                </Typography>
+                <Typography variant="h6">Paid Fees</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
 
         <Card
           sx={{
@@ -335,19 +457,63 @@ const DashboardManagement = () => {
               <Tab label="Fee Management" />
             </Tabs>
 
+            {/* Search and Filter Section */}
             <Box sx={{ mt: 3, mb: 2 }}>
-              <TextField
-                label="Search by name or email"
-                variant="outlined"
-                fullWidth
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="Search by name or email"
+                    variant="outlined"
+                    fullWidth
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Grid container spacing={1} alignItems="center">
+                    <Grid item xs={12} sm={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Date Filter</InputLabel>
+                        <Select
+                          value={dateFilter}
+                          label="Date Filter"
+                          onChange={(e) => setDateFilter(e.target.value)}
+                        >
+                          <MenuItem value="all">All Dates</MenuItem>
+                          <MenuItem value="today">Today</MenuItem>
+                          <MenuItem value="tomorrow">Tomorrow</MenuItem>
+                          <MenuItem value="custom">Custom Range</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    {dateFilter === 'custom' && (
+                      <>
+                        <Grid item xs={12} sm={4}>
+                          <DatePicker
+                            label="Start Date"
+                            value={customStartDate}
+                            onChange={setCustomStartDate}
+                            renderInput={(params) => <TextField {...params} size="small" fullWidth />}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <DatePicker
+                            label="End Date"
+                            value={customEndDate}
+                            onChange={setCustomEndDate}
+                            renderInput={(params) => <TextField {...params} size="small" fullWidth />}
+                          />
+                        </Grid>
+                      </>
+                    )}
+                  </Grid>
+                </Grid>
+              </Grid>
             </Box>
 
             <TabPanel value={tabValue} index={0}>
               <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: "0 6px 20px rgba(0,0,0,0.08)" }}>
-                <Table>
+                <Table sx={{ minWidth: 650 }}>
                   <TableHead sx={{ backgroundColor: '#e3f2fd' }}>
                     <TableRow>
                       <TableCell><b>User</b></TableCell>
@@ -355,7 +521,7 @@ const DashboardManagement = () => {
                       <TableCell><b>Role</b></TableCell>
                       <TableCell><b>Review Status</b></TableCell>
                       <TableCell><b>Review Date</b></TableCell>
-                      <TableCell><b>Actions</b></TableCell>
+                      <TableCell sx={{ width: '220px' }}><b>Actions</b></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -397,27 +563,28 @@ const DashboardManagement = () => {
                             ? new Date(user.review.reviewDate).toLocaleDateString()
                             : '-'}
                         </TableCell>
-                        <TableCell>
-                          <Box display="flex" gap={1}>
+                        <TableCell sx={{ width: '220px' }}>
+                          <Box display="flex" gap={1} flexWrap="wrap">
                             {!user.hasReview ? (
                               <Button
                                 variant="contained"
                                 startIcon={<Assignment />}
                                 onClick={() => openCreateReview(user)}
                                 size="small"
+                                sx={{ minWidth: '100px' }}
                               >
                                 Assign
                               </Button>
                             ) : (
                               <>
-                                <IconButton color="primary" onClick={() => openViewReview(user)}>
-                                  <Visibility />
+                                <IconButton color="primary" onClick={() => openViewReview(user)} size="small">
+                                  <Visibility fontSize="small" />
                                 </IconButton>
-                                <IconButton color="secondary" onClick={() => openEditReview(user)}>
-                                  <Edit />
+                                <IconButton color="secondary" onClick={() => openEditReview(user)} size="small">
+                                  <Edit fontSize="small" />
                                 </IconButton>
-                                <IconButton color="error" onClick={() => handleDeleteReview(user)}>
-                                  <Delete />
+                                <IconButton color="error" onClick={() => handleDeleteReview(user)} size="small">
+                                  <Delete fontSize="small" />
                                 </IconButton>
                                 <Button
                                   variant="contained"
@@ -434,25 +601,13 @@ const DashboardManagement = () => {
                                     px: 1,
                                     py: 0.35,
                                     minWidth: '78px',
-                                    maxWidth: '80px',
                                     boxShadow: '0 2px 4px rgba(25,118,210,0.25)',
                                     transition: 'all 0.25s ease-in-out',
                                     whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
                                     '&:hover': {
                                       background: 'linear-gradient(90deg, #1565c0 0%, #1e88e5 100%)',
                                       boxShadow: '0 4px 8px rgba(25,118,210,0.3)',
                                       transform: 'translateY(-1px)',
-                                    },
-                                    '& .MuiButton-startIcon': {
-                                      marginRight: '3px',
-                                      '& svg': {
-                                        fontSize: '0.9rem',
-                                      },
                                     },
                                   }}
                                 >
@@ -477,7 +632,7 @@ const DashboardManagement = () => {
                   boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
                 }}
               >
-                <Table>
+                <Table sx={{ minWidth: 650 }}>
                   <TableHead sx={{ backgroundColor: '#f1f9ff' }}>
                     <TableRow>
                       <TableCell><b>User</b></TableCell>
@@ -486,7 +641,7 @@ const DashboardManagement = () => {
                       <TableCell><b>Amount</b></TableCell>
                       <TableCell><b>Due Date</b></TableCell>
                       <TableCell><b>Status</b></TableCell>
-                      <TableCell><b>Actions</b></TableCell>
+                      <TableCell sx={{ width: '180px' }}><b>Actions</b></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -542,23 +697,41 @@ const DashboardManagement = () => {
                             </Select>
                           </FormControl>
                         </TableCell>
-                        <TableCell>
-                          <Box display="flex" gap={1}>
-                            <IconButton onClick={() => openFeeDialog(user)} color="primary">
-                              <Edit />
+                        <TableCell sx={{ width: '180px' }}>
+                          <Box display="flex" gap={1} flexWrap="wrap">
+                            <IconButton onClick={() => openFeeDialog(user)} color="primary" size="small">
+                              <Edit fontSize="small" />
                             </IconButton>
-                            <IconButton onClick={() => handleDeleteFees(user)} color="error">
-                              <Delete />
+                            <IconButton onClick={() => handleDeleteFees(user)} color="error" size="small">
+                              <Delete fontSize="small" />
                             </IconButton>
                             {user.review.feeStatus === 'Pending' && (
                               <Button
                                 size="small"
-                                variant="outlined"
+                                variant="contained"
                                 color="success"
                                 onClick={() => handleUpdateFeeStatus(user, 'Completed')}
-                                sx={{ fontSize: '0.7rem' }}
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: 600,
+                                  textTransform: 'none',
+                                  borderRadius: '6px',
+                                  minWidth: '70px',
+                                  px: 1,
+                                  py: 0.2,
+                                  lineHeight: 1.1,
+                                  background: 'linear-gradient(135deg, #4ade80 0%, #22c55e 100%)',
+                                  boxShadow: '0 1px 4px rgba(34, 197, 94, 0.3)',
+                                  transition: 'all 0.3s ease',
+                                  whiteSpace: 'nowrap',
+                                  '&:hover': {
+                                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                    boxShadow: '0 3px 8px rgba(34, 197, 94, 0.4)',
+                                    transform: 'translateY(-1px)',
+                                  },
+                                }}
                               >
-                                Mark Paid
+                                ✓ Paid
                               </Button>
                             )}
                           </Box>
@@ -572,6 +745,7 @@ const DashboardManagement = () => {
           </CardContent>
         </Card>
 
+        {/* Dialogs remain the same */}
         <Dialog
           open={viewDialog.open}
           onClose={() => setViewDialog({ open: false, data: null })}
