@@ -10,7 +10,7 @@ import {
   LogOut
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import axiosInstance from "../utils/axios";
+import axiosInstance from "../Utils/Axios"
 
 const Sidebar = ({ children }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
