@@ -1,5 +1,5 @@
 import React from "react";
-import AdminSidebar from "./AdminSidebar";
+import AdminSidebar from  "../Admin/AdminSideBar"
 
 import HomePage from "../Auth/Home";
 
