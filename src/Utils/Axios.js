@@ -2,7 +2,7 @@ import axios  from "axios";
 
 
 const axiosInstance = axios.create({
-  baseURL: "https://bridgeonbackend.onrender.com",
+  baseURL: "https://bridgeonbackend.onrender.com/api",
   timeout: 60000,
   withCredentials: true, // ✅ cookies attach automatically
 });
