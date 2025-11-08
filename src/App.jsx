@@ -35,9 +35,14 @@ import MentorSidebar from "./Mentor/MentorSidebar";
 import MentorAttendanceDashboard from "./Mentor/MentorAttendance";
 import MentorReview from "./Mentor/MentorReview";
 import MentorLeaveManagement from "./Mentor/MentorLeaveManagement";
+import Placements from "./Pages/Placements";
+import PlacementsPage from "./Pages/Placements";
+import ContactUsPage from "./Pages/ContactUsPage";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 const App = () => {
   return (
+    <ThemeProvider> 
     <Router>
       <Routes>
         {/* 🔹 Public Routes */}
@@ -85,6 +90,15 @@ const App = () => {
               </LayoutWrapper>
             </ProtectedRoute>
           }
+        /><Route
+          path="/Placements"
+          element={
+            <ProtectedRoute>
+              <LayoutWrapper>
+                <PlacementsPage />
+              </LayoutWrapper>
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/review"
@@ -92,6 +106,15 @@ const App = () => {
             <ProtectedRoute>
               <LayoutWrapper>
                 <Review />
+              </LayoutWrapper>
+            </ProtectedRoute>
+          }
+        /> <Route
+          path="/ContactUsPage"
+          element={
+            <ProtectedRoute>
+              <LayoutWrapper>
+                <ContactUsPage />
               </LayoutWrapper>
             </ProtectedRoute>
           }
@@ -268,6 +291,7 @@ const App = () => {
         {/* <Route path="*" element={<Navigate to="/login" replace />} /> */}
       </Routes>
     </Router>
+     </ThemeProvider>
   );
 };
 
