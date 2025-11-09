@@ -38,11 +38,11 @@ import MentorLeaveManagement from "./Mentor/MentorLeaveManagement";
 import Placements from "./Pages/Placements";
 import PlacementsPage from "./Pages/Placements";
 import ContactUsPage from "./Pages/ContactUsPage";
-import { ThemeProvider } from "./contexts/ThemeContext";
+
 
 const App = () => {
   return (
-    <ThemeProvider> 
+ 
     <Router>
       <Routes>
         {/* 🔹 Public Routes */}
@@ -291,7 +291,7 @@ const App = () => {
         {/* <Route path="*" element={<Navigate to="/login" replace />} /> */}
       </Routes>
     </Router>
-     </ThemeProvider>
+
   );
 };
 
